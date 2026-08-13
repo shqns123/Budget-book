@@ -108,7 +108,11 @@ export function isStateKey(key: string): key is keyof typeof defaults {
 export async function readState(key: keyof typeof defaults) {
   const db = await getDatabase();
   const result = db.exec("SELECT value FROM app_state WHERE key = ?", [key]);
-  if (!result[0]?.values[0]?.[0]) return defaults[key];
+  if (!result[0]?.values[0]?.[0]) {
+    const value = defaults[key];
+    await writeState(key, value);
+    return value;
+  }
   try {
     return JSON.parse(String(result[0].values[0][0]));
   } catch {

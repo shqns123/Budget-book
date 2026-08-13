@@ -162,13 +162,13 @@ export default function SettingsPage() {
     });
   }, [accounts, categories, startYear, fiscalMonth]);
   function updateBudget(accountId: string, amount: string) {
-    const next = budgets.some((item) => item.accountId === accountId)
-      ? budgets.map((item) =>
-          item.accountId === accountId
-            ? { ...item, amount: Number(amount || 0) }
-            : item,
-        )
-      : [...budgets, { accountId, amount: Number(amount || 0) }];
+    const nextAmount = Math.max(0, Number(parseNumberInput(amount)) || 0);
+    const withoutCurrent = budgets.filter(
+      (item) => item.accountId !== accountId,
+    );
+    const next = nextAmount
+      ? [...withoutCurrent, { accountId, amount: nextAmount }]
+      : withoutCurrent;
     setBudgets(next);
     void saveSharedState("budgets", next);
   }
@@ -453,10 +453,7 @@ export default function SettingsPage() {
                       value={formatNumber(budget?.amount || "")}
                       placeholder="예산 없음"
                       onChange={(event) =>
-                        updateBudget(
-                          account.id,
-                          parseNumberInput(event.target.value),
-                        )
+                        updateBudget(account.id, event.target.value)
                       }
                     />
                     <b>원</b>

@@ -17,11 +17,12 @@ export function saveSharedState<T>(key: string, value: T) {
   const next = previous
     .catch(() => undefined)
     .then(async () => {
-      await fetch(`/api/state/${key}`, {
+      const response = await fetch(`/api/state/${key}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ value }),
       });
+      if (!response.ok) throw new Error(`Failed to save ${key}`);
     });
   writeQueues.set(key, next);
   return next;
