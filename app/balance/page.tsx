@@ -1,12 +1,18 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { AppShell } from "@/components/app-shell";
 import importedLedger from "@/data/imported-ledger.json";
-import { won } from "@/lib/ledger";
+import { initialTransactions, type Transaction, won } from "@/lib/ledger";
+import { readSharedState } from "@/lib/shared-state";
 
 type ImportedAccount = (typeof importedLedger.accounts)[number];
 
 export default function BalancePage() {
+  const [records, setRecords] = useState<Transaction[]>(initialTransactions);
+  useEffect(() => {
+    void readSharedState("transactions", initialTransactions).then(setRecords);
+  }, []);
   return (
     <AppShell>
       {({ month }) => {
@@ -24,16 +30,17 @@ export default function BalancePage() {
           const change = isLiability(accountId) ? -assetChange : assetChange;
           amounts.set(accountId, (amounts.get(accountId) ?? 0) + change);
         };
-        importedLedger.transactions
-          .filter((item) => item.date <= cutoff)
+        records
+          .filter((item) => item.date.replaceAll(".", "-") <= cutoff)
           .forEach((item) => {
             if (item.type === "income")
               applyChange(item.accountId, item.amount);
             if (item.type === "expense")
-              applyChange(item.accountId, -item.amount);
+              applyChange(item.accountId, -Math.abs(item.amount));
             if (item.type === "transfer") {
-              applyChange(item.accountId, -item.amount);
-              if (item.toAccountId) applyChange(item.toAccountId, item.amount);
+              applyChange(item.accountId, -Math.abs(item.amount));
+              if (item.toAccountId)
+                applyChange(item.toAccountId, Math.abs(item.amount));
             }
           });
         const scoped = importedLedger.accounts;

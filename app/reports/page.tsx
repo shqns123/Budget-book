@@ -1,12 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ChevronRight } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
-import importedLedger from "@/data/imported-ledger.json";
-import { won } from "@/lib/ledger";
+import { initialTransactions, type Transaction, won } from "@/lib/ledger";
+import { readSharedState } from "@/lib/shared-state";
 
-type Transaction = (typeof importedLedger.transactions)[number];
 type Scope = { month: string };
 
 function totals(items: Transaction[]) {
@@ -15,10 +14,10 @@ function totals(items: Transaction[]) {
     .reduce((sum, item) => sum + item.amount, 0);
   const expense = items
     .filter((item) => item.type === "expense")
-    .reduce((sum, item) => sum + item.amount, 0);
+    .reduce((sum, item) => sum + Math.abs(item.amount), 0);
   const fixedExpense = items
-    .filter((item) => item.type === "expense" && item.isFixed)
-    .reduce((sum, item) => sum + item.amount, 0);
+    .filter((item) => item.type === "expense" && item.fixed)
+    .reduce((sum, item) => sum + Math.abs(item.amount), 0);
   return {
     income,
     expense,
@@ -29,6 +28,10 @@ function totals(items: Transaction[]) {
 
 export default function ReportsPage() {
   const [period, setPeriod] = useState<"month" | "year">("month");
+  const [records, setRecords] = useState<Transaction[]>(initialTransactions);
+  useEffect(() => {
+    void readSharedState("transactions", initialTransactions).then(setRecords);
+  }, []);
   return (
     <AppShell>
       {(scope) => (
@@ -50,9 +53,9 @@ export default function ReportsPage() {
             </div>
           </section>
           {period === "month" ? (
-            <MonthlyReport scope={scope} />
+            <MonthlyReport scope={scope} records={records} />
           ) : (
-            <YearlyReport scope={scope} />
+            <YearlyReport scope={scope} records={records} />
           )}
         </>
       )}
@@ -60,14 +63,20 @@ export default function ReportsPage() {
   );
 }
 
-function MonthlyReport({ scope }: { scope: Scope }) {
-  const current = importedLedger.transactions.filter((item) =>
-    item.date.startsWith(scope.month),
+function MonthlyReport({
+  scope,
+  records,
+}: {
+  scope: Scope;
+  records: Transaction[];
+}) {
+  const current = records.filter((item) =>
+    item.date.replaceAll(".", "-").startsWith(scope.month),
   );
   const [year, month] = scope.month.split("-").map(Number);
   const previousKey = `${month === 1 ? year - 1 : year}-${String(month === 1 ? 12 : month - 1).padStart(2, "0")}`;
-  const previous = importedLedger.transactions.filter((item) =>
-    item.date.startsWith(previousKey),
+  const previous = records.filter((item) =>
+    item.date.replaceAll(".", "-").startsWith(previousKey),
   );
   const now = totals(current);
   const before = totals(previous);
@@ -75,13 +84,14 @@ function MonthlyReport({ scope }: { scope: Scope }) {
     current
       .filter((item) => item.type === "expense")
       .reduce<Record<string, number>>((result, item) => {
-        result[item.category] = (result[item.category] ?? 0) + item.amount;
+        result[item.category] =
+          (result[item.category] ?? 0) + Math.abs(item.amount);
         return result;
       }, {}),
   ).sort((left, right) => right[1] - left[1]);
   const topExpenses = current
     .filter((item) => item.type === "expense")
-    .sort((left, right) => right.amount - left.amount)
+    .sort((left, right) => Math.abs(right.amount) - Math.abs(left.amount))
     .slice(0, 4);
   const ratio = now.income
     ? Number(((now.expense / now.income) * 100).toFixed(1))
@@ -118,7 +128,7 @@ function MonthlyReport({ scope }: { scope: Scope }) {
           {topExpenses.map((item, index) => (
             <div key={item.id}>
               <span>#{index + 1}</span>
-              <b>{item.memo}</b>
+              <b>{item.name}</b>
               <strong>−{won(item.amount)}</strong>
             </div>
           ))}
@@ -156,12 +166,18 @@ function MonthlyReport({ scope }: { scope: Scope }) {
   );
 }
 
-function YearlyReport({ scope }: { scope: Scope }) {
+function YearlyReport({
+  scope,
+  records,
+}: {
+  scope: Scope;
+  records: Transaction[];
+}) {
   const year = scope.month.slice(0, 4);
   const rows = Array.from({ length: 12 }, (_, index) => {
     const key = `${year}-${String(index + 1).padStart(2, "0")}`;
     const values = totals(
-      importedLedger.transactions.filter((item) => item.date.startsWith(key)),
+      records.filter((item) => item.date.replaceAll(".", "-").startsWith(key)),
     );
     return { month: `${index + 1}월`, ...values };
   });

@@ -3,24 +3,29 @@
 import { useEffect, useMemo, useState } from "react";
 import { CirclePlus, Settings2, Trash2, X } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
-import { accounts, formatNumber, parseNumberInput, won } from "@/lib/ledger";
+import {
+  accounts,
+  formatNumber,
+  initialTransactions,
+  parseNumberInput,
+  type Transaction,
+  won,
+} from "@/lib/ledger";
 import importedLedger from "@/data/imported-ledger.json";
 import {
-  readSavingsEntries,
-  readSavingsGoals,
-  readSavingsPlan,
-  saveSavingsEntries,
-  saveSavingsGoals,
-  saveSavingsPlan,
+  defaultSavingsGoals,
+  defaultSavingsPlan,
   type SavingsEntry,
   type SavingsGoal,
   type SavingsPlanItem,
 } from "@/lib/savings";
+import { readSharedState, saveSharedState } from "@/lib/shared-state";
 
 export default function SavingsPage() {
   const [goals, setGoals] = useState<SavingsGoal[]>([]);
   const [entries, setEntries] = useState<SavingsEntry[]>([]);
   const [plan, setPlan] = useState<SavingsPlanItem[]>([]);
+  const [records, setRecords] = useState<Transaction[]>(initialTransactions);
   const [selectedGoalId, setSelectedGoalId] = useState("home");
   const [showForm, setShowForm] = useState(false);
   const [showPlanSettings, setShowPlanSettings] = useState(false);
@@ -35,9 +40,20 @@ export default function SavingsPage() {
     memo: "",
   });
   useEffect(() => {
-    setGoals(readSavingsGoals());
-    setEntries(readSavingsEntries());
-    setPlan(readSavingsPlan());
+    void Promise.all([
+      readSharedState("savingsGoals", defaultSavingsGoals),
+      readSharedState("savingsEntries", [] as SavingsEntry[]),
+      readSharedState("savingsPlan", defaultSavingsPlan),
+      readSharedState("transactions", initialTransactions),
+    ]).then(([nextGoals, nextEntries, nextPlan, nextRecords]) => {
+      setGoals(nextGoals);
+      setEntries(nextEntries);
+      setPlan(nextPlan);
+      setRecords(nextRecords);
+      if (!nextGoals.some((goal) => goal.id === selectedGoalId)) {
+        setSelectedGoalId(nextGoals[0]?.id ?? "home");
+      }
+    });
   }, []);
   const savedByGoal = useMemo(
     () =>
@@ -52,7 +68,7 @@ export default function SavingsPage() {
       goal.id === id ? { ...goal, ...updates } : goal,
     );
     setGoals(next);
-    saveSavingsGoals(next);
+    void saveSharedState("savingsGoals", next);
   }
   function addEntry() {
     if (!draft.amount || !draft.goalId) return;
@@ -68,18 +84,18 @@ export default function SavingsPage() {
       ...entries,
     ];
     setEntries(next);
-    saveSavingsEntries(next);
+    void saveSharedState("savingsEntries", next);
     setDraft((current) => ({ ...current, amount: "", memo: "" }));
     setShowForm(false);
   }
   function removeEntry(id: string) {
     const next = entries.filter((entry) => entry.id !== id);
     setEntries(next);
-    saveSavingsEntries(next);
+    void saveSharedState("savingsEntries", next);
   }
   function savePlan(items: SavingsPlanItem[]) {
     setPlan(items);
-    saveSavingsPlan(items);
+    void saveSharedState("savingsPlan", items);
   }
   const selectedGoal = goals.find((goal) => goal.id === selectedGoalId);
   const selectedPlan = plan.filter((item) => item.goalId === selectedGoalId);
@@ -91,7 +107,7 @@ export default function SavingsPage() {
     };
     const next = [...goals, goal];
     setGoals(next);
-    saveSavingsGoals(next);
+    void saveSharedState("savingsGoals", next);
     setSelectedGoalId(goal.id);
   }
   const accountBalances = useMemo(() => {
@@ -110,19 +126,20 @@ export default function SavingsPage() {
         (amounts.get(accountId) ?? 0) +
           (isLiability(accountId) ? -assetChange : assetChange),
       );
-    importedLedger.transactions.forEach((item) => {
+    records.forEach((item) => {
       if (item.type === "income") apply(item.accountId, item.amount);
-      if (item.type === "expense") apply(item.accountId, -item.amount);
+      if (item.type === "expense")
+        apply(item.accountId, -Math.abs(item.amount));
       if (item.type === "transfer") {
-        apply(item.accountId, -item.amount);
-        if (item.toAccountId) apply(item.toAccountId, item.amount);
+        apply(item.accountId, -Math.abs(item.amount));
+        if (item.toAccountId) apply(item.toAccountId, Math.abs(item.amount));
       }
     });
     return importedLedger.accounts.map((account) => ({
       account,
       amount: amounts.get(account.id) ?? 0,
     }));
-  }, []);
+  }, [records]);
   function addAccountToPlan(accountId: string) {
     const found = accountBalances.find((item) => item.account.id === accountId);
     if (!found) return;

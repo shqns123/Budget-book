@@ -23,7 +23,7 @@ import {
   won,
 } from "@/lib/ledger";
 import importedLedger from "@/data/imported-ledger.json";
-import { readCustomRecurringExpenses } from "@/lib/recurring";
+import { readSharedState, saveSharedState } from "@/lib/shared-state";
 
 const makeCategoryOptions = (type: "income" | "expense") =>
   importedLedger.categories
@@ -82,10 +82,10 @@ function TransactionsContent() {
     }
   }, [searchParams]);
   useEffect(() => {
-    const refresh = () => setCustomRecurring(readCustomRecurringExpenses());
-    refresh();
-    window.addEventListener("focus", refresh);
-    return () => window.removeEventListener("focus", refresh);
+    void readSharedState("transactions", initialTransactions).then(setRecords);
+    void readSharedState("recurring", [] as RecurringExpenseTemplate[]).then(
+      setCustomRecurring,
+    );
   }, []);
   function closeComposer() {
     setComposer(false);
@@ -107,7 +107,9 @@ function TransactionsContent() {
       date: `${month.replace("-", ".")}.${String(Math.min(31, Math.max(1, item.day))).padStart(2, "0")}`,
       type: item.type ?? "expense",
     }));
-    setRecords((items) => [...recordsToAdd, ...items]);
+    const next = [...recordsToAdd, ...records];
+    setRecords(next);
+    void saveSharedState("transactions", next);
     closeComposer();
   }
   function openEditor(record: Transaction) {
@@ -150,16 +152,18 @@ function TransactionsContent() {
       date: date || `${month.replace("-", ".")}.13`,
       type,
     };
-    setRecords((items) =>
-      editingId
-        ? items.map((item) => (item.id === editingId ? record : item))
-        : [record, ...items],
-    );
+    const next = editingId
+      ? records.map((item) => (item.id === editingId ? record : item))
+      : [record, ...records];
+    setRecords(next);
+    void saveSharedState("transactions", next);
     closeComposer();
   }
   function removeRecord() {
     if (!editingId) return;
-    setRecords((items) => items.filter((item) => item.id !== editingId));
+    const next = records.filter((item) => item.id !== editingId);
+    setRecords(next);
+    void saveSharedState("transactions", next);
     closeComposer();
   }
   return (

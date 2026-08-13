@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Check,
   CirclePlus,
@@ -13,15 +13,8 @@ import {
 } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
 import importedLedger from "@/data/imported-ledger.json";
-import {
-  readMonthlyBudgets,
-  saveMonthlyBudgets,
-  type MonthlyBudget,
-} from "@/lib/budgets";
-import {
-  readCustomRecurringExpenses,
-  saveCustomRecurringExpenses,
-} from "@/lib/recurring";
+import { type MonthlyBudget } from "@/lib/budgets";
+import { readSharedState, saveSharedState } from "@/lib/shared-state";
 import {
   formatNumber,
   parseNumberInput,
@@ -43,6 +36,12 @@ type AccountSetting = {
   hidden?: boolean;
 };
 type Category = { major: string; minor: string; fixed: boolean };
+type SharedSettings = {
+  accounts: AccountSetting[];
+  categories: Category[];
+  startYear: number;
+  fiscalMonth: number;
+};
 const icons = {
   bank: Landmark,
   card: CreditCard,
@@ -77,9 +76,16 @@ const initialCategories: Category[] = importedLedger.categories.map(
     fixed: category.isFixed,
   }),
 );
+const initialSettings: SharedSettings = {
+  accounts: initialAccounts,
+  categories: initialCategories,
+  startYear: importedLedger.settings.startYear,
+  fiscalMonth: importedLedger.settings.fiscalStartMonth,
+};
 const money = (value: number) => `${formatNumber(value)}원`;
 
 export default function SettingsPage() {
+  const settingsLoaded = useRef(false);
   const [accounts, setAccounts] = useState(initialAccounts);
   const [categories, setCategories] = useState(initialCategories);
   const [startYear, setStartYear] = useState(importedLedger.settings.startYear);
@@ -132,9 +138,29 @@ export default function SettingsPage() {
     [accounts],
   );
   useEffect(() => {
-    setBudgets(readMonthlyBudgets());
-    setRecurring(readCustomRecurringExpenses());
+    void Promise.all([
+      readSharedState("settings", initialSettings),
+      readSharedState("budgets", [] as MonthlyBudget[]),
+      readSharedState("recurring", [] as RecurringExpenseTemplate[]),
+    ]).then(([sharedSettings, sharedBudgets, sharedRecurring]) => {
+      setAccounts(sharedSettings.accounts);
+      setCategories(sharedSettings.categories);
+      setStartYear(sharedSettings.startYear);
+      setFiscalMonth(sharedSettings.fiscalMonth);
+      setBudgets(sharedBudgets);
+      setRecurring(sharedRecurring);
+      settingsLoaded.current = true;
+    });
   }, []);
+  useEffect(() => {
+    if (!settingsLoaded.current) return;
+    void saveSharedState("settings", {
+      accounts,
+      categories,
+      startYear,
+      fiscalMonth,
+    });
+  }, [accounts, categories, startYear, fiscalMonth]);
   function updateBudget(accountId: string, amount: string) {
     const next = budgets.some((item) => item.accountId === accountId)
       ? budgets.map((item) =>
@@ -144,11 +170,11 @@ export default function SettingsPage() {
         )
       : [...budgets, { accountId, amount: Number(amount || 0) }];
     setBudgets(next);
-    saveMonthlyBudgets(next);
+    void saveSharedState("budgets", next);
   }
   function saveRecurring(items: RecurringExpenseTemplate[]) {
     setRecurring(items);
-    saveCustomRecurringExpenses(items);
+    void saveSharedState("recurring", items);
   }
   function addRecurring() {
     if (!recurringDraft.name || !recurringDraft.amount) return;

@@ -4,17 +4,17 @@ import { ArrowDownRight, ArrowUpRight, Settings } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { AppShell } from "@/components/app-shell";
 import { accounts, initialTransactions, won } from "@/lib/ledger";
-import { readMonthlyBudgets, type MonthlyBudget } from "@/lib/budgets";
+import { type MonthlyBudget } from "@/lib/budgets";
+import { readSharedState } from "@/lib/shared-state";
 
 export default function OverviewPage() {
   const [budgets, setBudgets] = useState<MonthlyBudget[]>([]);
+  const [records, setRecords] = useState(initialTransactions);
   const [showAccounts, setShowAccounts] = useState(false);
   const budgetMenuRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    const refresh = () => setBudgets(readMonthlyBudgets());
-    refresh();
-    window.addEventListener("focus", refresh);
-    return () => window.removeEventListener("focus", refresh);
+    void readSharedState("budgets", [] as MonthlyBudget[]).then(setBudgets);
+    void readSharedState("transactions", initialTransactions).then(setRecords);
   }, []);
   useEffect(() => {
     const close = (event: MouseEvent) => {
@@ -27,7 +27,7 @@ export default function OverviewPage() {
   return (
     <AppShell>
       {({ selected, month, updateSelected }) => {
-        const inMonth = initialTransactions.filter((item) =>
+        const inMonth = records.filter((item) =>
           item.date.startsWith(month.replace("-", ".")),
         );
         const filtered = selected.length

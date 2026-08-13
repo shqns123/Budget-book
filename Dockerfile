@@ -16,5 +16,7 @@ ENV HOSTNAME=0.0.0.0
 WORKDIR /app
 COPY --from=builder /app/build/standalone ./
 COPY --from=builder /app/build/static ./build/static
+COPY --from=builder /app/node_modules/sql.js ./node_modules/sql.js
+RUN mkdir -p /app/data
 EXPOSE 3000
 CMD ["node", "server.js"]
