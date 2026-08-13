@@ -17,7 +17,7 @@ Docker Desktop이 실행 중인 환경에서 다음 명령을 실행합니다.
 docker compose up --build
 ```
 
-웹앱은 `http://localhost:3000`에서 열립니다. PostgreSQL은 처음 시작될 때 `drizzle/0000_happy_taskmaster.sql` 마이그레이션을 적용합니다.
+웹앱은 `http://localhost:8000`에서 열립니다. PostgreSQL은 처음 시작될 때 `drizzle/0000_happy_taskmaster.sql` 마이그레이션을 적용합니다.
 
 ## 현재 구현 범위
 
