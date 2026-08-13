@@ -1,0 +1,40 @@
+services:
+  household-ledger:
+    build:
+      context: .
+      network: host
+    container_name: budget-book
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env
+    environment:
+      TZ: Asia/Seoul
+      NODE_ENV: production
+      DATABASE_URL: ${DATABASE_URL:-postgresql://ledger:ledger@db:5432/ledger}
+    volumes:
+      - ./data:/app/data
+    depends_on:
+      db:
+        condition: service_healthy
+  db:
+    image: postgres:16-alpine
+    container_name: household-ledger-db
+    restart: unless-stopped
+    environment:
+      TZ: Asia/Seoul
+      POSTGRES_DB: ${POSTGRES_DB:-ledger}
+      POSTGRES_USER: ${POSTGRES_USER:-ledger}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ledger}
+    volumes:
+      - ledger_data:/var/lib/postgresql/data
+      - ./drizzle:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ledger -d ledger"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  ledger_data:

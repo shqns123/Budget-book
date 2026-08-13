@@ -1,0 +1,18 @@
+[
+  {"id":"sheet26-01","type":"transfer","name":"여행경비 이체","category":"이동","minorCategory":"","accountId":"c845eba9-5318-5792-88a6-ac0f7e52b944","toAccountId":"715a3542-2fa9-5d86-a6c8-53ea8e48c9de","amount":200000,"day":5},
+  {"id":"sheet26-02","type":"expense","name":"부모님 병원비 저축","category":"💶사회생활비","minorCategory":"부모님병원비저축","accountId":"c845eba9-5318-5792-88a6-ac0f7e52b944","amount":100000,"day":5},
+  {"id":"sheet26-03","type":"expense","name":"우진 보험료 이체","category":"🚑보험료","minorCategory":"우진보험료","accountId":"c845eba9-5318-5792-88a6-ac0f7e52b944","amount":240000,"day":5},
+  {"id":"sheet26-04","type":"expense","name":"지은 보험료 이체","category":"🚑보험료","minorCategory":"지은보험료","accountId":"c845eba9-5318-5792-88a6-ac0f7e52b944","amount":160000,"day":5},
+  {"id":"sheet26-05","type":"expense","name":"지은 우진 용돈 이체 각25만원","category":"🇳취미여가비","minorCategory":"용돈","accountId":"c845eba9-5318-5792-88a6-ac0f7e52b944","amount":500000,"day":5},
+  {"id":"sheet26-06","type":"expense","name":"주택담보대출","category":"🏠주거비","minorCategory":"주택담보대출","accountId":"c845eba9-5318-5792-88a6-ac0f7e52b944","amount":1224000,"day":5},
+  {"id":"sheet26-07","type":"transfer","name":"식비 이체","category":"이동","minorCategory":"","accountId":"c845eba9-5318-5792-88a6-ac0f7e52b944","toAccountId":"7f38c369-783c-56d3-86db-f919fe8b541d","amount":700000,"day":5},
+  {"id":"sheet26-08","type":"transfer","name":"생활비 이체","category":"이동","minorCategory":"","accountId":"c845eba9-5318-5792-88a6-ac0f7e52b944","toAccountId":"fffcdeeb-ebd9-5392-8309-ce0411107159","amount":1000000,"day":5},
+  {"id":"sheet26-09","type":"transfer","name":"주택청약이체","category":"이동","minorCategory":"","accountId":"c845eba9-5318-5792-88a6-ac0f7e52b944","toAccountId":"c41b3f46-095e-53e2-89be-d2c762ebf3ec","amount":20000,"day":5},
+  {"id":"sheet26-10","type":"expense","name":"쿠팡 와우멤버쉽","category":"💵생활비","minorCategory":"생활용품","accountId":"33a41634-a223-5bd8-afe5-d4afacfba7b2","amount":7890,"day":1},
+  {"id":"sheet26-11","type":"expense","name":"정수기렌탈","category":"기타","minorCategory":"기타","accountId":"55063f5d-b8b5-5f02-9acf-6b1e36b08faf","amount":40900,"day":10},
+  {"id":"sheet26-12","type":"expense","name":"지은 통신비","category":"📱통신비","minorCategory":"핸드폰요금","accountId":"55063f5d-b8b5-5f02-9acf-6b1e36b08faf","amount":62030,"day":13},
+  {"id":"sheet26-13","type":"expense","name":"경동도시가스비","category":"🏠주거비","minorCategory":"가스","accountId":"55063f5d-b8b5-5f02-9acf-6b1e36b08faf","amount":31460,"day":20},
+  {"id":"sheet26-14","type":"expense","name":"인터넷 + TV 요금","category":"📱통신비","minorCategory":"인터넷요금","accountId":"55063f5d-b8b5-5f02-9acf-6b1e36b08faf","amount":47300,"day":20},
+  {"id":"sheet26-15","type":"expense","name":"우진 통신비","category":"📱통신비","minorCategory":"핸드폰요금","accountId":"55063f5d-b8b5-5f02-9acf-6b1e36b08faf","amount":56730,"day":20},
+  {"id":"sheet26-16","type":"expense","name":"관리비","category":"🏠주거비","minorCategory":"관리비","accountId":"55063f5d-b8b5-5f02-9acf-6b1e36b08faf","amount":287820,"day":20}
+]

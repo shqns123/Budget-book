@@ -1,0 +1,1 @@
+ALTER TABLE "transactions" ADD COLUMN "minor_category" text;

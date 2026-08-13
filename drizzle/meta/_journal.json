@@ -1,0 +1,34 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1786617384212,
+      "tag": "0000_happy_taskmaster",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1786619606214,
+      "tag": "0001_bitter_ego",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1786622215799,
+      "tag": "0002_low_blackheart",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1786630000000,
+      "tag": "0003_import_source_ledger",
+      "breakpoints": true
+    }
+  ]
+}
