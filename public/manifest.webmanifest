@@ -1,0 +1,24 @@
+{
+  "name": "잔잔한 가계부",
+  "short_name": "잔잔한 가계부",
+  "description": "통장별 흐름을 조용히 정리하는 개인 가계부",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#fbe1d1",
+  "theme_color": "#17191c",
+  "icons": [
+    {
+      "src": "/pwa-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/pwa-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
