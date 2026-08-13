@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { LaunchOverview } from "@/components/launch-overview";
 import { PwaRegister } from "@/components/pwa-register";
 import "./globals.css";
 
@@ -28,6 +29,7 @@ export default function RootLayout({
     <html lang="ko">
       <body>
         <PwaRegister />
+        <LaunchOverview />
         {children}
       </body>
     </html>

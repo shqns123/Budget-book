@@ -92,13 +92,29 @@ async function getDatabase() {
       )`);
       persist(db);
       return db;
-    })();
+    })().catch((error) => {
+      // Do not permanently poison the in-memory connection after one failed
+      // initialization attempt (for example, while the data volume mounts).
+      databasePromise = undefined;
+      throw error;
+    });
   }
   return databasePromise;
 }
 
 function persist(db: Database) {
   writeFileSync(getDatabasePath(), Buffer.from(db.export()));
+}
+
+function normalizeStateValue(key: keyof typeof defaults, value: unknown) {
+  if (key !== "transactions" || !Array.isArray(value)) return value;
+  return value.map((item) => {
+    if (!item || typeof item !== "object") return item;
+    const transaction = item as Record<string, unknown>;
+    return typeof transaction.date === "string"
+      ? { ...transaction, date: transaction.date.replaceAll("-", ".") }
+      : transaction;
+  });
 }
 
 export function isStateKey(key: string): key is keyof typeof defaults {
@@ -114,21 +130,34 @@ export async function readState(key: keyof typeof defaults) {
     return value;
   }
   try {
-    return JSON.parse(String(result[0].values[0][0]));
+    const storedValue = JSON.parse(String(result[0].values[0][0]));
+    const normalizedValue = normalizeStateValue(key, storedValue);
+    if (JSON.stringify(normalizedValue) !== JSON.stringify(storedValue)) {
+      try {
+        await writeState(key, normalizedValue);
+      } catch {
+        // Reading valid data should still succeed if a one-time migration
+        // cannot be written immediately. A later read will retry it.
+      }
+    }
+    return normalizedValue;
   } catch {
     return defaults[key];
   }
 }
 
 export async function writeState(key: keyof typeof defaults, value: unknown) {
-  writeQueue = writeQueue.then(async () => {
-    const db = await getDatabase();
-    db.run(
-      `INSERT INTO app_state (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)
-       ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP`,
-      [key, JSON.stringify(value)],
-    );
-    persist(db);
-  });
+  const normalizedValue = normalizeStateValue(key, value);
+  writeQueue = writeQueue
+    .catch(() => undefined)
+    .then(async () => {
+      const db = await getDatabase();
+      db.run(
+        `INSERT INTO app_state (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP`,
+        [key, JSON.stringify(normalizedValue)],
+      );
+      persist(db);
+    });
   return writeQueue;
 }

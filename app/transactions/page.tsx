@@ -1,7 +1,7 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   ArrowDownRight,
   ArrowLeftRight,
@@ -43,6 +43,17 @@ const isDebt = (id: string) =>
   ["card", "loan"].includes(
     accounts.find((account) => account.id === id)?.type ?? "",
   );
+const defaultSourceAccountId =
+  accounts.find((account) => !isDebt(account.id))?.id ?? accounts[0]?.id ?? "";
+const defaultDestinationAccountId =
+  accounts.find((account) => account.id !== defaultSourceAccountId)?.id ??
+  defaultSourceAccountId;
+const isDate = (value: string | null) =>
+  Boolean(value && /^\d{4}-\d{2}-\d{2}$/.test(value));
+const today = () => {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+};
 
 export default function TransactionsPage() {
   return (
@@ -54,15 +65,16 @@ export default function TransactionsPage() {
 
 function TransactionsContent() {
   const searchParams = useSearchParams();
+  const router = useRouter();
   const [records, setRecords] = useState(initialTransactions);
   const [composer, setComposer] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [type, setType] = useState<Transaction["type"]>("expense");
   const [name, setName] = useState("");
   const [amount, setAmount] = useState("");
-  const [date, setDate] = useState("2026-08-13");
-  const [accountId, setAccountId] = useState("kb");
-  const [toAccountId, setToAccountId] = useState("shinhan");
+  const [date, setDate] = useState(today);
+  const [accountId, setAccountId] = useState(defaultSourceAccountId);
+  const [toAccountId, setToAccountId] = useState(defaultDestinationAccountId);
   const [category, setCategory] = useState("🏬식비");
   const [minorCategory, setMinorCategory] = useState("식료품");
   const [query, setQuery] = useState("");
@@ -73,28 +85,72 @@ function TransactionsContent() {
   const [customRecurring, setCustomRecurring] = useState<
     RecurringExpenseTemplate[]
   >([]);
+  const recordsChangedBeforeLoad = useRef(false);
+  const [saveError, setSaveError] = useState("");
+  const [formError, setFormError] = useState("");
   const isRepayment = type === "transfer" && isDebt(toAccountId);
   useEffect(() => {
     if (searchParams.get("add") === "true") {
       setEditingId(null);
-      setDate("2026-08-13");
+      const requestedAccountId = searchParams.get("account");
+      if (accounts.some((account) => account.id === requestedAccountId)) {
+        setAccountId(requestedAccountId!);
+      }
+      setDate(isDate(searchParams.get("date")) ? searchParams.get("date")! : today());
       setComposer(true);
     }
   }, [searchParams]);
   useEffect(() => {
-    void readSharedState("transactions", initialTransactions).then(setRecords);
-    void readSharedState("recurring", [] as RecurringExpenseTemplate[]).then(
-      setCustomRecurring,
-    );
+    void Promise.all([
+      readSharedState("transactions", initialTransactions),
+      readSharedState("recurring", [] as RecurringExpenseTemplate[]),
+    ]).then(([savedRecords, savedRecurring]) => {
+      // A record entered before the first API response must not be replaced
+      // by that older response.
+      if (!recordsChangedBeforeLoad.current) setRecords(savedRecords);
+      setCustomRecurring(savedRecurring);
+    });
   }, []);
+  async function persistRecords(next: Transaction[]) {
+    recordsChangedBeforeLoad.current = true;
+    setRecords(next);
+    setSaveError("");
+    try {
+      await saveSharedState("transactions", next);
+      return true;
+    } catch {
+      setSaveError("거래 내역을 저장하지 못했습니다. 잠시 후 다시 시도해 주세요.");
+      return false;
+    }
+  }
   function closeComposer() {
     setComposer(false);
     setEditingId(null);
     setName("");
     setAmount("");
     setRecurringBatch(null);
+    setFormError("");
+    if (searchParams.get("add") === "true") {
+      router.replace("/transactions", { scroll: false });
+    }
   }
-  function registerRecurringBatch(month: string) {
+  function includeRecordAccounts(
+    selected: string[],
+    updateSelected: (next: string[]) => void,
+    ids: Array<string | undefined>,
+  ) {
+    if (!selected.length) return;
+    const next = [...selected];
+    ids.forEach((id) => {
+      if (id && !next.includes(id)) next.push(id);
+    });
+    if (next.length !== selected.length) updateSelected(next);
+  }
+  async function registerRecurringBatch(
+    month: string,
+    selected: string[],
+    updateSelected: (next: string[]) => void,
+  ) {
     if (!recurringBatch?.length) return;
     const recordsToAdd: Transaction[] = recurringBatch.map((item) => ({
       id: crypto.randomUUID(),
@@ -108,9 +164,15 @@ function TransactionsContent() {
       type: item.type ?? "expense",
     }));
     const next = [...recordsToAdd, ...records];
-    setRecords(next);
-    void saveSharedState("transactions", next);
-    closeComposer();
+    if (await persistRecords(next)) {
+      recordsToAdd.forEach((record) =>
+        includeRecordAccounts(selected, updateSelected, [
+          record.accountId,
+          record.toAccountId,
+        ]),
+      );
+      closeComposer();
+    }
   }
   function openEditor(record: Transaction) {
     const options =
@@ -136,8 +198,32 @@ function TransactionsContent() {
     );
     setComposer(true);
   }
-  function save(month: string) {
-    if (!amount || (type !== "transfer" && !name)) return;
+  async function save(
+    month: string,
+    selected: string[],
+    updateSelected: (next: string[]) => void,
+  ) {
+    const numericAmount = Number(amount);
+    if (!Number.isFinite(numericAmount) || numericAmount <= 0) {
+      setFormError("금액을 1원 이상 입력해 주세요.");
+      return;
+    }
+    if (type !== "transfer" && !name.trim()) {
+      setFormError("내용을 입력해 주세요.");
+      return;
+    }
+    if (!accounts.some((account) => account.id === accountId)) {
+      setFormError("출금 통장을 다시 선택해 주세요.");
+      return;
+    }
+    if (
+      type === "transfer" &&
+      !accounts.some((account) => account.id === toAccountId)
+    ) {
+      setFormError("입금 통장을 다시 선택해 주세요.");
+      return;
+    }
+    setFormError("");
     const record: Transaction = {
       id: editingId ?? crypto.randomUUID(),
       accountId,
@@ -148,27 +234,31 @@ function TransactionsContent() {
           : name,
       category: type === "transfer" ? "이동" : category,
       minorCategory: type === "transfer" ? undefined : minorCategory,
-      amount: type === "income" ? Number(amount) : -Number(amount),
-      date: date || `${month.replace("-", ".")}.13`,
+      amount: type === "income" ? numericAmount : -numericAmount,
+      date: (date || `${month}-01`).replaceAll("-", "."),
       type,
     };
     const next = editingId
       ? records.map((item) => (item.id === editingId ? record : item))
       : [record, ...records];
-    setRecords(next);
-    void saveSharedState("transactions", next);
-    closeComposer();
+    if (await persistRecords(next)) {
+      includeRecordAccounts(selected, updateSelected, [
+        record.accountId,
+        record.toAccountId,
+      ]);
+      closeComposer();
+    }
   }
   function removeRecord() {
     if (!editingId) return;
     const next = records.filter((item) => item.id !== editingId);
-    setRecords(next);
-    void saveSharedState("transactions", next);
-    closeComposer();
+    void persistRecords(next).then((saved) => {
+      if (saved) closeComposer();
+    });
   }
   return (
     <AppShell>
-      {({ selected, month }) => {
+      {({ selected, month, updateSelected }) => {
         const visible = records.filter(
           (item) =>
             item.date.startsWith(month.replace("-", ".")) &&
@@ -194,6 +284,7 @@ function TransactionsContent() {
               </p>
             </aside>
             <section className="ledger-surface">
+              {saveError && <p className="save-error">{saveError}</p>}
               <div className="ledger-toolbar">
                 <div className="search-box">
                   <Search size={16} />
@@ -295,7 +386,7 @@ function TransactionsContent() {
                   className="record-sheet compact-composer"
                   onSubmit={(event) => {
                     event.preventDefault();
-                    save(month);
+                    void save(month, selected, updateSelected);
                   }}
                 >
                   <button
@@ -442,7 +533,13 @@ function TransactionsContent() {
                         <button
                           className="register-recurring-batch"
                           type="button"
-                          onClick={() => registerRecurringBatch(month)}
+                          onClick={() =>
+                            void registerRecurringBatch(
+                              month,
+                              selected,
+                              updateSelected,
+                            )
+                          }
                         >
                           선택 항목 일괄 등록
                         </button>
@@ -581,6 +678,7 @@ function TransactionsContent() {
                           ? "지출 기록하기"
                           : "수입 기록하기"}
                   </button>
+                  {formError && <p className="save-error">{formError}</p>}
                   {editingId && (
                     <button
                       className="delete-record"

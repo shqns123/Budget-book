@@ -86,6 +86,7 @@ const money = (value: number) => `${formatNumber(value)}원`;
 
 export default function SettingsPage() {
   const settingsLoaded = useRef(false);
+  const budgetsChangedBeforeLoad = useRef(false);
   const [accounts, setAccounts] = useState(initialAccounts);
   const [categories, setCategories] = useState(initialCategories);
   const [startYear, setStartYear] = useState(importedLedger.settings.startYear);
@@ -97,6 +98,7 @@ export default function SettingsPage() {
   >("accounts");
   const [budgets, setBudgets] = useState<MonthlyBudget[]>([]);
   const [recurring, setRecurring] = useState<RecurringExpenseTemplate[]>([]);
+  const [budgetSaveError, setBudgetSaveError] = useState("");
   const [recurringDraft, setRecurringDraft] = useState({
     type: "expense" as "income" | "expense" | "transfer",
     name: "",
@@ -147,7 +149,9 @@ export default function SettingsPage() {
       setCategories(sharedSettings.categories);
       setStartYear(sharedSettings.startYear);
       setFiscalMonth(sharedSettings.fiscalMonth);
-      setBudgets(sharedBudgets);
+      // Keep an amount the user entered while the initial API request was in
+      // flight instead of replacing it with the older saved value.
+      if (!budgetsChangedBeforeLoad.current) setBudgets(sharedBudgets);
       setRecurring(sharedRecurring);
       settingsLoaded.current = true;
     });
@@ -169,8 +173,12 @@ export default function SettingsPage() {
     const next = nextAmount
       ? [...withoutCurrent, { accountId, amount: nextAmount }]
       : withoutCurrent;
+    budgetsChangedBeforeLoad.current = true;
     setBudgets(next);
-    void saveSharedState("budgets", next);
+    setBudgetSaveError("");
+    void saveSharedState("budgets", next).catch(() => {
+      setBudgetSaveError("예산을 저장하지 못했습니다. 잠시 후 다시 시도해 주세요.");
+    });
   }
   function saveRecurring(items: RecurringExpenseTemplate[]) {
     setRecurring(items);
@@ -440,6 +448,9 @@ export default function SettingsPage() {
                 생활비처럼 월별로 관리할 통장에만 금액을 입력하세요. 저장 즉시
                 오버뷰의 통장별 예산과 사용 현황에 반영됩니다.
               </p>
+              {budgetSaveError && (
+                <p className="save-error">{budgetSaveError}</p>
+              )}
               {budgetableAccounts.map((account) => {
                 const budget = budgets.find(
                   (item) => item.accountId === account.id,

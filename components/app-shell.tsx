@@ -12,6 +12,7 @@ import {
   CreditCard,
   Landmark,
   LayoutDashboard,
+  LogOut,
   Menu,
   PiggyBank,
   Settings,
@@ -144,6 +145,10 @@ export function AppShell({
       `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`,
     );
   };
+  const logout = async () => {
+    await fetch("/api/auth/logout", { method: "POST" });
+    window.location.assign("/login");
+  };
   return (
     <div className="app-frame">
       <aside className={openNav ? "sidebar opened" : "sidebar"}>
@@ -177,6 +182,14 @@ export function AppShell({
             나의 소비 흐름
           </span>
         </div>
+        <button
+          className="logout-button"
+          onClick={() => void logout()}
+          aria-label="로그아웃"
+          title="로그아웃"
+        >
+          <LogOut size={18} />
+        </button>
       </aside>
       <div className="mobile-shade" onClick={() => setOpenNav(false)} />
       <main className="app-main">
@@ -300,7 +313,7 @@ export function AppShell({
       {pathname === "/transactions" && (
         <Link
           className="floating-add"
-          href="/transactions?add=true"
+          href={`/transactions?add=true${selected[0] ? `&account=${encodeURIComponent(selected[0])}` : ""}`}
           aria-label="거래 기록 추가"
         >
           <CirclePlus size={25} />
