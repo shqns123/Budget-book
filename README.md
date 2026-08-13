@@ -17,7 +17,7 @@ Docker Desktop이 실행 중인 환경에서 다음 명령을 실행합니다.
 docker compose up --build
 ```
 
-웹앱은 `http://localhost:8000`에서 열립니다. 첫 실행 시 `data/ledger.db`가 생성되고, 가계부 데이터는 이 파일에 저장됩니다.
+웹앱은 `http://localhost:3002`에서 열립니다. 첫 실행 시 `data/ledger.db`가 생성되고, 가계부 데이터는 이 파일에 저장됩니다.
 
 ## 현재 구현 범위
 

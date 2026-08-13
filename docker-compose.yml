@@ -6,7 +6,7 @@ services:
     container_name: budget-book
     restart: unless-stopped
     ports:
-      - "8000:8000"
+      - "3002:3000"
     env_file:
       - .env
     environment:
