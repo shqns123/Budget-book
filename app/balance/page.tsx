@@ -2,29 +2,40 @@
 
 import { useEffect, useState } from "react";
 import { AppShell } from "@/components/app-shell";
-import importedLedger from "@/data/imported-ledger.json";
-import { initialTransactions, type Transaction, won } from "@/lib/ledger";
+import {
+  accountDetails,
+  hydrateLedgerSettings,
+  initialTransactions,
+  type AccountDetails,
+  type Transaction,
+  won,
+} from "@/lib/ledger";
 import { readSharedState } from "@/lib/shared-state";
-
-type ImportedAccount = (typeof importedLedger.accounts)[number];
 
 export default function BalancePage() {
   const [records, setRecords] = useState<Transaction[]>(initialTransactions);
+  const [, setSettingsVersion] = useState(0);
   useEffect(() => {
     void readSharedState("transactions", initialTransactions).then(setRecords);
+    void readSharedState("settings", { accounts: [], categories: [] }).then(
+      (settings) => {
+        hydrateLedgerSettings(settings);
+        setSettingsVersion((version) => version + 1);
+      },
+    );
   }, []);
   return (
     <AppShell>
       {({ month }) => {
         const cutoff = `${month}-31`;
         const amounts = new Map(
-          importedLedger.accounts.map((account) => [
+          accountDetails.map((account) => [
             account.id,
             account.openingBalance,
           ]),
         );
         const isLiability = (accountId: string) =>
-          importedLedger.accounts.find((account) => account.id === accountId)
+          accountDetails.find((account) => account.id === accountId)
             ?.classification !== "asset";
         const applyChange = (accountId: string, assetChange: number) => {
           const change = isLiability(accountId) ? -assetChange : assetChange;
@@ -43,7 +54,7 @@ export default function BalancePage() {
                 applyChange(item.toAccountId, Math.abs(item.amount));
             }
           });
-        const scoped = importedLedger.accounts;
+        const scoped = accountDetails;
         const groups = (classification: string) =>
           Object.values(
             scoped
@@ -67,7 +78,7 @@ export default function BalancePage() {
               return result;
             }, {}),
         ).sort((left, right) => {
-          const order = (account: ImportedAccount) =>
+          const order = (account: AccountDetails) =>
             account.type === "card"
               ? account.minorCategory.includes("할부")
                 ? 1
@@ -127,7 +138,7 @@ function BalanceGroup({
   amounts,
 }: {
   heading: string;
-  groups: ImportedAccount[][];
+  groups: AccountDetails[][];
   amounts: Map<string, number>;
 }) {
   return (

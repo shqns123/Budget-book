@@ -5,13 +5,14 @@ import { CalendarDays, CirclePlus, Settings2, Trash2, X } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
 import {
   accounts,
+  accountDetails,
   formatNumber,
+  hydrateLedgerSettings,
   initialTransactions,
   parseNumberInput,
   type Transaction,
   won,
 } from "@/lib/ledger";
-import importedLedger from "@/data/imported-ledger.json";
 import {
   defaultSavingsGoals,
   defaultSavingsPlan,
@@ -30,6 +31,7 @@ export default function SavingsPage() {
   const [monthlyPlans, setMonthlyPlans] = useState<MonthlySavingsPlan[]>([]);
   const [monthlyMonths, setMonthlyMonths] = useState<MonthlySavingsMonth[]>([]);
   const [records, setRecords] = useState<Transaction[]>(initialTransactions);
+  const [settingsVersion, setSettingsVersion] = useState(0);
   const [selectedGoalId, setSelectedGoalId] = useState("home");
   const [showForm, setShowForm] = useState(false);
   const [showPlanSettings, setShowPlanSettings] = useState(false);
@@ -45,6 +47,12 @@ export default function SavingsPage() {
     memo: "",
   });
   useEffect(() => {
+    void readSharedState("settings", { accounts: [], categories: [] }).then(
+      (settings) => {
+        hydrateLedgerSettings(settings);
+        setSettingsVersion((version) => version + 1);
+      },
+    );
     void Promise.all([
       readSharedState("savingsGoals", defaultSavingsGoals),
       readSharedState("savingsEntries", [] as SavingsEntry[]),
@@ -263,13 +271,13 @@ export default function SavingsPage() {
   }
   const accountBalances = useMemo(() => {
     const amounts = new Map(
-      importedLedger.accounts.map((account) => [
+      accountDetails.map((account) => [
         account.id,
         account.openingBalance,
       ]),
     );
     const isLiability = (accountId: string) =>
-      importedLedger.accounts.find((account) => account.id === accountId)
+      accountDetails.find((account) => account.id === accountId)
         ?.classification !== "asset";
     const apply = (accountId: string, assetChange: number) =>
       amounts.set(
@@ -286,11 +294,11 @@ export default function SavingsPage() {
         if (item.toAccountId) apply(item.toAccountId, Math.abs(item.amount));
       }
     });
-    return importedLedger.accounts.map((account) => ({
+    return accountDetails.map((account) => ({
       account,
       amount: amounts.get(account.id) ?? 0,
     }));
-  }, [records]);
+  }, [records, settingsVersion]);
   function addAccountToPlan(accountId: string) {
     const found = accountBalances.find((item) => item.account.id === accountId);
     if (!found) return;

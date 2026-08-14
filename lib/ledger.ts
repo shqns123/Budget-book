@@ -1,11 +1,56 @@
-import importedLedger from "@/data/imported-ledger.json";
-
 export type Account = {
   id: string;
   name: string;
   kind: string;
   type: "bank" | "card" | "loan" | "savings" | "cash";
   paymentDay?: number;
+};
+
+export type AccountDetails = Account & {
+  code: string;
+  classification: "asset" | "short_liability" | "long_liability";
+  majorCategory: string;
+  minorCategory: string;
+  openingBalance: number;
+  memo?: string;
+  hidden?: boolean;
+};
+
+export type LedgerCategory = {
+  majorCategory: string;
+  minorCategory: string;
+  fixed: boolean;
+  transactionType?: "income" | "expense";
+};
+
+type StoredAccount = {
+  id: string;
+  code?: string;
+  accountCode?: string;
+  name: string;
+  kind?: string;
+  type?: Account["type"];
+  classification?: string;
+  major?: string;
+  majorCategory?: string;
+  minor?: string;
+  minorCategory?: string;
+  balance?: number;
+  openingBalance?: number;
+  memo?: string;
+  paymentDay?: number;
+  hidden?: boolean;
+  isHidden?: boolean;
+};
+
+type StoredCategory = {
+  major?: string;
+  majorCategory?: string;
+  minor?: string;
+  minorCategory?: string;
+  fixed?: boolean;
+  isFixed?: boolean;
+  transactionType?: "income" | "expense";
 };
 
 export type Transaction = {
@@ -34,52 +79,55 @@ export type RecurringExpenseTemplate = {
   toAccountId?: string;
 };
 
-export const importedSettings = importedLedger.settings;
+// Runtime data is loaded from SQLite through the shared-state API.
+// These empty fallbacks keep first render safe before that request completes.
+export const accounts: Account[] = [];
+export const accountDetails: AccountDetails[] = [];
+export const categories: LedgerCategory[] = [];
+export const initialTransactions: Transaction[] = [];
+export const recurringExpenseTemplates: RecurringExpenseTemplate[] = [];
 
-export const accounts: Account[] = importedLedger.accounts.map((account) => ({
-  id: account.id,
-  name: account.name,
-  kind: account.minorCategory,
-  type: account.type as Account["type"],
-  paymentDay: account.paymentDay ?? undefined,
-}));
-
-export const initialTransactions: Transaction[] = importedLedger.transactions
-  .map((transaction) => ({
-    id: transaction.id,
-    accountId: transaction.accountId,
-    toAccountId: transaction.toAccountId ?? undefined,
-    name: transaction.memo,
-    category: transaction.category,
-    minorCategory: transaction.minorCategory ?? undefined,
-    amount:
-      transaction.type === "income" ? transaction.amount : -transaction.amount,
-    date: transaction.date.replaceAll("-", "."),
-    type: transaction.type as Transaction["type"],
-    fixed: transaction.isFixed,
-  }))
-  .sort((left, right) => right.date.localeCompare(left.date));
-
-const recurringByName = new Map<string, RecurringExpenseTemplate>();
-for (const transaction of initialTransactions) {
-  if (transaction.type !== "expense" || !transaction.minorCategory) continue;
-  const key = `${transaction.name}|${transaction.accountId}`;
-  if (recurringByName.has(key)) continue;
-  recurringByName.set(key, {
-    id: transaction.id,
-    name: transaction.name,
-    category: transaction.category,
-    minorCategory: transaction.minorCategory,
-    accountId: transaction.accountId,
-    amount: Math.abs(transaction.amount),
-    day: Number(transaction.date.slice(-2)),
+export function hydrateLedgerSettings(value: unknown) {
+  const settings = value as {
+    accounts?: StoredAccount[];
+    categories?: StoredCategory[];
+  };
+  const normalizedAccounts = (settings.accounts ?? []).map((account) => {
+    const classification = account.classification;
+    const normalizedClassification =
+      classification === "short_liability" || classification === "단기부채"
+        ? "short_liability"
+        : classification === "long_liability" || classification === "장기부채"
+          ? "long_liability"
+          : "asset";
+    return {
+      id: account.id,
+      code: account.code ?? account.accountCode ?? "",
+      name: account.name,
+      kind: account.kind ?? account.type ?? "bank",
+      type: account.type ?? (account.kind as Account["type"]) ?? "bank",
+      paymentDay: account.paymentDay,
+      classification: normalizedClassification,
+      majorCategory: account.majorCategory ?? account.major ?? "",
+      minorCategory: account.minorCategory ?? account.minor ?? "",
+      openingBalance: Number(account.openingBalance ?? account.balance ?? 0),
+      memo: account.memo,
+      hidden: account.hidden ?? account.isHidden,
+    } satisfies AccountDetails;
   });
+  accounts.splice(0, accounts.length, ...normalizedAccounts);
+  accountDetails.splice(0, accountDetails.length, ...normalizedAccounts);
+  categories.splice(
+    0,
+    categories.length,
+    ...(settings.categories ?? []).map((category) => ({
+      majorCategory: category.majorCategory ?? category.major ?? "",
+      minorCategory: category.minorCategory ?? category.minor ?? "",
+      fixed: category.fixed ?? category.isFixed ?? false,
+      transactionType: category.transactionType,
+    })),
+  );
 }
-
-export const recurringExpenseTemplates = [...recurringByName.values()].slice(
-  0,
-  12,
-);
 
 export const formatNumber = (value: number | string) => {
   const raw = String(value);

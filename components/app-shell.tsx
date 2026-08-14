@@ -19,8 +19,9 @@ import {
   WalletCards,
   X,
 } from "lucide-react";
-import { accounts } from "@/lib/ledger";
+import { accounts, hydrateLedgerSettings } from "@/lib/ledger";
 import { readDefaultAccountIds } from "@/lib/budgets";
+import { readSharedState } from "@/lib/shared-state";
 
 type Scope = {
   selected: string[];
@@ -58,10 +59,22 @@ export function AppShell({
   const [showMonths, setShowMonths] = useState(false);
   const [openNav, setOpenNav] = useState(false);
   const [month, setMonth] = useState("2026-08");
+  const [settingsReady, setSettingsReady] = useState(false);
   const controlsRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const savedMonth = window.localStorage.getItem("ledger-month");
     if (savedMonth) setMonth(savedMonth);
+  }, []);
+  useEffect(() => {
+    void readSharedState("settings", {
+      accounts: [],
+      categories: [],
+      startYear: new Date().getFullYear(),
+      fiscalMonth: 1,
+    }).then((settings) => {
+      hydrateLedgerSettings(settings);
+      setSettingsReady(true);
+    });
   }, []);
   useEffect(() => {
     const storageKey = `ledger-selected-accounts:${pathname}`;
@@ -84,7 +97,7 @@ export function AppShell({
     } catch {
       setSelected([]);
     }
-  }, [pathname]);
+  }, [pathname, settingsReady]);
   useEffect(() => {
     const closeMenus = (event: MouseEvent) => {
       if (!controlsRef.current?.contains(event.target as Node)) {

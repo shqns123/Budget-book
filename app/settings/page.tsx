@@ -12,11 +12,11 @@ import {
   X,
 } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
-import importedLedger from "@/data/imported-ledger.json";
 import { type MonthlyBudget } from "@/lib/budgets";
 import { readSharedState, saveSharedState } from "@/lib/shared-state";
 import {
   formatNumber,
+  hydrateLedgerSettings,
   parseNumberInput,
   type RecurringExpenseTemplate,
 } from "@/lib/ledger";
@@ -49,50 +49,21 @@ const icons = {
   savings: PiggyBank,
   cash: WalletCards,
 };
-const initialAccounts: AccountSetting[] = importedLedger.accounts.map(
-  (account) => ({
-    id: account.id,
-    code: account.accountCode,
-    classification:
-      account.classification === "asset"
-        ? "자산"
-        : account.classification === "short_liability"
-          ? "단기부채"
-          : "장기부채",
-    major: account.majorCategory,
-    minor: account.minorCategory,
-    name: account.name,
-    balance: account.openingBalance,
-    memo: account.memo ?? "",
-    kind: account.type as Kind,
-    paymentDay: account.paymentDay ?? undefined,
-    hidden: account.isHidden,
-  }),
-);
-const initialCategories: Category[] = importedLedger.categories.map(
-  (category) => ({
-    major: category.majorCategory,
-    minor: category.minorCategory,
-    fixed: category.isFixed,
-  }),
-);
 const initialSettings: SharedSettings = {
-  accounts: initialAccounts,
-  categories: initialCategories,
-  startYear: importedLedger.settings.startYear,
-  fiscalMonth: importedLedger.settings.fiscalStartMonth,
+  accounts: [],
+  categories: [],
+  startYear: new Date().getFullYear(),
+  fiscalMonth: 1,
 };
 const money = (value: number) => `${formatNumber(value)}원`;
 
 export default function SettingsPage() {
   const settingsLoaded = useRef(false);
   const budgetsChangedBeforeLoad = useRef(false);
-  const [accounts, setAccounts] = useState(initialAccounts);
-  const [categories, setCategories] = useState(initialCategories);
-  const [startYear, setStartYear] = useState(importedLedger.settings.startYear);
-  const [fiscalMonth, setFiscalMonth] = useState(
-    importedLedger.settings.fiscalStartMonth,
-  );
+  const [accounts, setAccounts] = useState<AccountSetting[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [startYear, setStartYear] = useState(initialSettings.startYear);
+  const [fiscalMonth, setFiscalMonth] = useState(initialSettings.fiscalMonth);
   const [view, setView] = useState<
     "accounts" | "categories" | "budgets" | "recurring"
   >("accounts");
@@ -104,8 +75,8 @@ export default function SettingsPage() {
     name: "",
     category: "🏬식비",
     minorCategory: "식료품",
-    accountId: initialAccounts[0]?.id ?? "",
-    toAccountId: initialAccounts[1]?.id ?? "",
+    accountId: "",
+    toAccountId: "",
     amount: "",
     day: "1",
   });
@@ -145,6 +116,7 @@ export default function SettingsPage() {
       readSharedState("budgets", [] as MonthlyBudget[]),
       readSharedState("recurring", [] as RecurringExpenseTemplate[]),
     ]).then(([sharedSettings, sharedBudgets, sharedRecurring]) => {
+      hydrateLedgerSettings(sharedSettings);
       setAccounts(sharedSettings.accounts);
       setCategories(sharedSettings.categories);
       setStartYear(sharedSettings.startYear);
@@ -158,12 +130,14 @@ export default function SettingsPage() {
   }, []);
   useEffect(() => {
     if (!settingsLoaded.current) return;
-    void saveSharedState("settings", {
+    const nextSettings = {
       accounts,
       categories,
       startYear,
       fiscalMonth,
-    });
+    };
+    hydrateLedgerSettings(nextSettings);
+    void saveSharedState("settings", nextSettings);
   }, [accounts, categories, startYear, fiscalMonth]);
   function updateBudget(accountId: string, amount: string) {
     const nextAmount = Math.max(0, Number(parseNumberInput(amount)) || 0);
@@ -518,7 +492,7 @@ export default function SettingsPage() {
                   onChange={(event) => {
                     const category = event.target.value;
                     const minorCategory =
-                      initialCategories.find((item) => item.major === category)
+                      categories.find((item) => item.major === category)
                         ?.minor ?? "";
                     setRecurringDraft({
                       ...recurringDraft,
@@ -528,7 +502,7 @@ export default function SettingsPage() {
                   }}
                 >
                   {[
-                    ...new Set(initialCategories.map((item) => item.major)),
+                    ...new Set(categories.map((item) => item.major)),
                   ].map((item) => (
                     <option key={item}>{item}</option>
                   ))}
@@ -559,7 +533,7 @@ export default function SettingsPage() {
                     })
                   }
                 >
-                  {initialCategories
+                  {categories
                     .filter((item) => item.major === recurringDraft.category)
                     .map((item) => (
                       <option key={item.minor}>{item.minor}</option>

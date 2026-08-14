@@ -1,8 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import initSqlJs, { type Database } from "sql.js";
-import importedLedger from "@/data/imported-ledger.json";
-import sheet26Recurring from "@/data/sheet26-recurring.json";
 import { defaultSavingsGoals, defaultSavingsPlan } from "@/lib/savings";
 
 const databasePath =
@@ -11,61 +9,20 @@ const databasePath =
 let databasePromise: Promise<Database> | undefined;
 let writeQueue = Promise.resolve();
 
-const initialTransactions = importedLedger.transactions
-  .map((transaction) => ({
-    id: transaction.id,
-    accountId: transaction.accountId,
-    toAccountId: transaction.toAccountId ?? undefined,
-    name: transaction.memo,
-    category: transaction.category,
-    minorCategory: transaction.minorCategory ?? undefined,
-    amount:
-      transaction.type === "income" ? transaction.amount : -transaction.amount,
-    date: transaction.date.replaceAll("-", "."),
-    type: transaction.type,
-    fixed: transaction.isFixed,
-  }))
-  .sort((left, right) => right.date.localeCompare(left.date));
-
-const initialAccounts = importedLedger.accounts.map((account) => ({
-  id: account.id,
-  code: account.accountCode,
-  classification:
-    account.classification === "asset"
-      ? "자산"
-      : account.classification === "short_liability"
-        ? "단기부채"
-        : "장기부채",
-  major: account.majorCategory,
-  minor: account.minorCategory,
-  name: account.name,
-  balance: account.openingBalance,
-  memo: account.memo ?? "",
-  kind: account.type,
-  paymentDay: account.paymentDay ?? undefined,
-  hidden: account.isHidden,
-}));
-
-const initialCategories = importedLedger.categories.map((category) => ({
-  major: category.majorCategory,
-  minor: category.minorCategory,
-  fixed: category.isFixed,
-}));
-
 const defaults: Record<string, unknown> = {
-  transactions: initialTransactions,
+  transactions: [],
   budgets: [],
-  recurring: sheet26Recurring,
+  recurring: [],
   savingsGoals: defaultSavingsGoals,
   savingsEntries: [],
   savingsPlan: defaultSavingsPlan,
   monthlySavingsPlans: [],
   monthlySavingsMonths: [],
   settings: {
-    accounts: initialAccounts,
-    categories: initialCategories,
-    startYear: importedLedger.settings.startYear,
-    fiscalMonth: importedLedger.settings.fiscalStartMonth,
+    accounts: [],
+    categories: [],
+    startYear: new Date().getFullYear(),
+    fiscalMonth: 1,
   },
 };
 

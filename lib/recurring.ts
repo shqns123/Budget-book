@@ -1,10 +1,6 @@
 import type { RecurringExpenseTemplate } from "@/lib/ledger";
-import sheet26Recurring from "@/data/sheet26-recurring.json";
 
 export const RECURRING_STORAGE_KEY = "ledger-recurring-expenses";
-const RECURRING_MIGRATION_KEY = "ledger-recurring-expenses-sheet26-v1";
-export const sheet26RecurringTemplates =
-  sheet26Recurring as RecurringExpenseTemplate[];
 
 export function readCustomRecurringExpenses(): RecurringExpenseTemplate[] {
   if (typeof window === "undefined") return [];
@@ -22,19 +18,9 @@ export function readCustomRecurringExpenses(): RecurringExpenseTemplate[] {
             Number.isFinite(item?.day),
         )
       : [];
-    if (window.localStorage.getItem(RECURRING_MIGRATION_KEY)) return items;
-    const merged = [
-      ...sheet26RecurringTemplates,
-      ...items.filter(
-        (item) =>
-          !sheet26RecurringTemplates.some((seed) => seed.id === item.id),
-      ),
-    ];
-    window.localStorage.setItem(RECURRING_MIGRATION_KEY, "true");
-    window.localStorage.setItem(RECURRING_STORAGE_KEY, JSON.stringify(merged));
-    return merged;
+    return items;
   } catch {
-    return sheet26RecurringTemplates;
+    return [];
   }
 }
 

@@ -16,19 +16,23 @@ import {
 import { AppShell } from "@/components/app-shell";
 import {
   accounts,
+  categories,
   formatNumber,
+  hydrateLedgerSettings,
   initialTransactions,
   parseNumberInput,
   type RecurringExpenseTemplate,
   type Transaction,
   won,
 } from "@/lib/ledger";
-import importedLedger from "@/data/imported-ledger.json";
 import { readSharedState, saveSharedState } from "@/lib/shared-state";
 
 const makeCategoryOptions = (type: "income" | "expense") =>
-  importedLedger.categories
-    .filter((category) => category.transactionType === type)
+  categories
+    .filter(
+      (category) =>
+        !category.transactionType || category.transactionType === type,
+    )
     .reduce<Record<string, string[]>>((result, category) => {
       const options = result[category.majorCategory] ?? [];
       if (!options.includes(category.minorCategory)) {
@@ -38,17 +42,10 @@ const makeCategoryOptions = (type: "income" | "expense") =>
       return result;
     }, {});
 
-const categoryOptions = makeCategoryOptions("expense");
-const incomeCategoryOptions = makeCategoryOptions("income");
 const isDebt = (id: string) =>
   ["card", "loan"].includes(
     accounts.find((account) => account.id === id)?.type ?? "",
   );
-const defaultSourceAccountId =
-  accounts.find((account) => !isDebt(account.id))?.id ?? accounts[0]?.id ?? "";
-const defaultDestinationAccountId =
-  accounts.find((account) => account.id !== defaultSourceAccountId)?.id ??
-  defaultSourceAccountId;
 const isDate = (value: string | null) =>
   Boolean(value && /^\d{4}-\d{2}-\d{2}$/.test(value));
 const today = () => {
@@ -75,8 +72,8 @@ function TransactionsContent() {
   const [name, setName] = useState("");
   const [amount, setAmount] = useState("");
   const [date, setDate] = useState(today);
-  const [accountId, setAccountId] = useState(defaultSourceAccountId);
-  const [toAccountId, setToAccountId] = useState(defaultDestinationAccountId);
+  const [accountId, setAccountId] = useState("");
+  const [toAccountId, setToAccountId] = useState("");
   const [category, setCategory] = useState("🏬식비");
   const [minorCategory, setMinorCategory] = useState("식료품");
   const [query, setQuery] = useState("");
@@ -87,11 +84,15 @@ function TransactionsContent() {
   const [customRecurring, setCustomRecurring] = useState<
     RecurringExpenseTemplate[]
   >([]);
+  const [, setSettingsVersion] = useState(0);
   const recordsChangedBeforeLoad = useRef(false);
   const lastTouchRef = useRef<{ id: string; at: number } | null>(null);
   const [saveError, setSaveError] = useState("");
   const [formError, setFormError] = useState("");
   const isRepayment = type === "transfer" && isDebt(toAccountId);
+  const currentCategoryOptions = makeCategoryOptions(
+    type === "income" ? "income" : "expense",
+  );
   useEffect(() => {
     if (searchParams.get("add") === "true") {
       setEditingId(null);
@@ -103,6 +104,20 @@ function TransactionsContent() {
       setComposer(true);
     }
   }, [searchParams]);
+  useEffect(() => {
+    void readSharedState("settings", { accounts: [], categories: [] }).then(
+      (settings) => {
+        hydrateLedgerSettings(settings);
+        setSettingsVersion((version) => version + 1);
+        setAccountId((id) =>
+          id || accounts.find((account) => !isDebt(account.id))?.id || accounts[0]?.id || "",
+        );
+        setToAccountId((id) =>
+          id || accounts.find((account) => account.id !== id)?.id || accounts[0]?.id || "",
+        );
+      },
+    );
+  }, []);
   useEffect(() => {
     void Promise.all([
       readSharedState("transactions", initialTransactions),
@@ -179,7 +194,9 @@ function TransactionsContent() {
   }
   function openEditor(record: Transaction) {
     const options =
-      record.type === "income" ? incomeCategoryOptions : categoryOptions;
+      record.type === "income"
+        ? makeCategoryOptions("income")
+        : makeCategoryOptions("expense");
     const fallbackCategory = record.type === "income" ? "💸근로소득" : "🏬식비";
     const nextCategory =
       record.type === "transfer"
@@ -681,17 +698,11 @@ function TransactionsContent() {
                               const next = event.target.value;
                               setCategory(next);
                               setMinorCategory(
-                                (type === "income"
-                                  ? incomeCategoryOptions
-                                  : categoryOptions)[next][0],
+                                currentCategoryOptions[next]?.[0] ?? "",
                               );
                             }}
                           >
-                            {Object.keys(
-                              type === "income"
-                                ? incomeCategoryOptions
-                                : categoryOptions,
-                            ).map((item) => (
+                            {Object.keys(currentCategoryOptions).map((item) => (
                               <option key={item}>{item}</option>
                             ))}
                           </select>
@@ -704,9 +715,7 @@ function TransactionsContent() {
                               setMinorCategory(event.target.value)
                             }
                           >
-                            {(type === "income"
-                              ? incomeCategoryOptions
-                              : categoryOptions)[category].map((item) => (
+                            {(currentCategoryOptions[category] ?? []).map((item) => (
                               <option key={item}>{item}</option>
                             ))}
                           </select>
