@@ -59,6 +59,8 @@ const defaults: Record<string, unknown> = {
   savingsGoals: defaultSavingsGoals,
   savingsEntries: [],
   savingsPlan: defaultSavingsPlan,
+  monthlySavingsPlans: [],
+  monthlySavingsMonths: [],
   settings: {
     accounts: initialAccounts,
     categories: initialCategories,

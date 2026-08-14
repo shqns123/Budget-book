@@ -20,13 +20,14 @@ import {
   X,
 } from "lucide-react";
 import { accounts } from "@/lib/ledger";
-import { readDefaultAccountIds, saveDefaultAccountIds } from "@/lib/budgets";
+import { readDefaultAccountIds } from "@/lib/budgets";
 
 type Scope = {
   selected: string[];
   activeLabel: string;
   month: string;
   updateSelected: (next: string[]) => void;
+  saveSelected: () => void;
   setMonth: (next: string) => void;
 };
 
@@ -53,7 +54,6 @@ export function AppShell({
 }) {
   const pathname = usePathname();
   const [selected, setSelected] = useState<string[]>([]);
-  const [defaultAccountIds, setDefaultAccountIds] = useState<string[]>([]);
   const [showAccounts, setShowAccounts] = useState(false);
   const [showMonths, setShowMonths] = useState(false);
   const [openNav, setOpenNav] = useState(false);
@@ -62,10 +62,6 @@ export function AppShell({
   useEffect(() => {
     const savedMonth = window.localStorage.getItem("ledger-month");
     if (savedMonth) setMonth(savedMonth);
-    const defaults = readDefaultAccountIds().filter((id) =>
-      accounts.some((account) => account.id === id),
-    );
-    setDefaultAccountIds(defaults);
   }, []);
   useEffect(() => {
     const storageKey = `ledger-selected-accounts:${pathname}`;
@@ -110,13 +106,16 @@ export function AppShell({
       : selected.length === 1
         ? activeLabel
         : `통장 ${selected.length}개 선택`;
-  const isAccountScoped = pathname !== "/balance" && pathname !== "/reports";
-  const showHeaderControls = pathname === "/transactions";
+  const isAccountScoped = pathname !== "/balance";
+  const showHeaderControls =
+    pathname === "/transactions" || pathname === "/reports";
   const updateSelected = (next: string[]) => {
     setSelected(next);
+  };
+  const saveSelected = () => {
     window.localStorage.setItem(
       `ledger-selected-accounts:${pathname}`,
-      JSON.stringify(next),
+      JSON.stringify(selected),
     );
   };
   const toggle = (id: string) =>
@@ -125,13 +124,6 @@ export function AppShell({
         ? selected.filter((item) => item !== id)
         : [...selected, id],
     );
-  const saveCurrentSelectionAsDefault = () => {
-    saveDefaultAccountIds(selected);
-    setDefaultAccountIds(selected);
-  };
-  const isCurrentSelectionDefault =
-    selected.length === defaultAccountIds.length &&
-    selected.every((id) => defaultAccountIds.includes(id));
   const monthLabel = `${month.slice(0, 4)}년 ${Number(month.slice(5))}월`;
   const changeMonth = (next: string) => {
     setMonth(next);
@@ -258,41 +250,39 @@ export function AppShell({
                   </button>
                   {showAccounts && (
                     <div className="account-menu">
-                      <button
-                        className="default-account-button"
-                        onClick={saveCurrentSelectionAsDefault}
-                      >
-                        {selected.length
-                          ? "현재 선택을 기본 통장으로"
-                          : "기본 통장 설정 해제"}
-                        <small>
-                          {isCurrentSelectionDefault ? "저장됨" : ""}
-                        </small>
-                      </button>
-                      <button
-                        onClick={() => updateSelected([])}
-                        className="all-account"
-                      >
-                        전체 통장{" "}
-                        <small>{!selected.length ? "선택됨" : ""}</small>
-                      </button>
-                      {accounts.map((account) => {
-                        const Icon = icons[account.type];
-                        return (
-                          <label key={account.id}>
-                            <input
-                              type="checkbox"
-                              checked={selected.includes(account.id)}
-                              onChange={() => toggle(account.id)}
-                            />
-                            <Icon size={16} />
-                            <span>
-                              {account.name}
-                              <small>{account.kind}</small>
-                            </span>
-                          </label>
-                        );
-                      })}
+                      <div className="account-menu-actions">
+                        <button
+                          onClick={() => updateSelected([])}
+                          className="all-account"
+                        >
+                          전체 통장
+                        </button>
+                        <button
+                          className="account-selection-save"
+                          onClick={saveSelected}
+                        >
+                          저장
+                        </button>
+                      </div>
+                      <div className="account-menu-list">
+                        {accounts.map((account) => {
+                          const Icon = icons[account.type];
+                          return (
+                            <label key={account.id}>
+                              <input
+                                type="checkbox"
+                                checked={selected.includes(account.id)}
+                                onChange={() => toggle(account.id)}
+                              />
+                              <Icon size={16} />
+                              <span>
+                                {account.name}
+                                <small>{account.kind}</small>
+                              </span>
+                            </label>
+                          );
+                        })}
+                      </div>
                     </div>
                   )}
                 </div>
@@ -306,6 +296,7 @@ export function AppShell({
             activeLabel,
             month,
             updateSelected,
+            saveSelected,
             setMonth: changeMonth,
           })}
         </div>

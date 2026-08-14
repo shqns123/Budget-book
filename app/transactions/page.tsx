@@ -9,6 +9,7 @@ import {
   ArrowDownUp,
   Repeat2,
   Search,
+  Pencil,
   Trash2,
   X,
 } from "lucide-react";
@@ -68,6 +69,7 @@ function TransactionsContent() {
   const router = useRouter();
   const [records, setRecords] = useState(initialTransactions);
   const [composer, setComposer] = useState(false);
+  const [detailRecord, setDetailRecord] = useState<Transaction | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [type, setType] = useState<Transaction["type"]>("expense");
   const [name, setName] = useState("");
@@ -86,6 +88,7 @@ function TransactionsContent() {
     RecurringExpenseTemplate[]
   >([]);
   const recordsChangedBeforeLoad = useRef(false);
+  const lastTouchRef = useRef<{ id: string; at: number } | null>(null);
   const [saveError, setSaveError] = useState("");
   const [formError, setFormError] = useState("");
   const isRepayment = type === "transfer" && isDebt(toAccountId);
@@ -198,6 +201,9 @@ function TransactionsContent() {
     );
     setComposer(true);
   }
+  function openDetails(record: Transaction) {
+    setDetailRecord(record);
+  }
   async function save(
     month: string,
     selected: string[],
@@ -208,7 +214,7 @@ function TransactionsContent() {
       setFormError("금액을 1원 이상 입력해 주세요.");
       return;
     }
-    if (type !== "transfer" && !name.trim()) {
+    if (!name.trim()) {
       setFormError("내용을 입력해 주세요.");
       return;
     }
@@ -228,10 +234,7 @@ function TransactionsContent() {
       id: editingId ?? crypto.randomUUID(),
       accountId,
       toAccountId: type === "transfer" ? toAccountId : undefined,
-      name:
-        type === "transfer"
-          ? `${accounts.find((item) => item.id === toAccountId)?.name} ${isRepayment ? "상환" : "이동"}`
-          : name,
+      name: name.trim(),
       category: type === "transfer" ? "이동" : category,
       minorCategory: type === "transfer" ? undefined : minorCategory,
       amount: type === "income" ? numericAmount : -numericAmount,
@@ -249,11 +252,13 @@ function TransactionsContent() {
       closeComposer();
     }
   }
-  function removeRecord() {
-    if (!editingId) return;
-    const next = records.filter((item) => item.id !== editingId);
+  function removeRecord(id: string) {
+    const next = records.filter((item) => item.id !== id);
     void persistRecords(next).then((saved) => {
-      if (saved) closeComposer();
+      if (saved) {
+        setDetailRecord(null);
+        closeComposer();
+      }
     });
   }
   return (
@@ -313,12 +318,22 @@ function TransactionsContent() {
                 <article
                   className="ledger-row editable-row"
                   key={item.id}
-                  onClick={() => openEditor(item)}
+                  onDoubleClick={() => openDetails(item)}
+                  onTouchEnd={() => {
+                    const now = Date.now();
+                    const previous = lastTouchRef.current;
+                    if (previous?.id === item.id && now - previous.at < 380) {
+                      lastTouchRef.current = null;
+                      openDetails(item);
+                      return;
+                    }
+                    lastTouchRef.current = { id: item.id, at: now };
+                  }}
                   role="button"
                   tabIndex={0}
                   onKeyDown={(event) => {
                     if (event.key === "Enter" || event.key === " ")
-                      openEditor(item);
+                      openDetails(item);
                   }}
                 >
                   <time>{item.date}</time>
@@ -333,7 +348,23 @@ function TransactionsContent() {
                       )}
                     </i>
                     <span>
+                      <small className="ledger-date">{item.date}</small>
                       <b>{item.name}</b>
+                      <small className="ledger-mobile-meta">
+                        {item.type === "transfer"
+                          ? "이동"
+                          : item.minorCategory
+                            ? `${item.category} · ${item.minorCategory}`
+                            : item.category}
+                        {" / "}
+                        {
+                          accounts.find(
+                            (account) => account.id === item.accountId,
+                          )?.name
+                        }
+                        {item.toAccountId &&
+                          ` → ${accounts.find((account) => account.id === item.toAccountId)?.name}`}
+                      </small>
                       {item.memo && <small>{item.memo}</small>}
                     </span>
                   </div>
@@ -380,6 +411,52 @@ function TransactionsContent() {
                 </article>
               ))}
             </section>
+            {detailRecord && (
+              <div className="sheet-backdrop detail-backdrop">
+                <section
+                  className="record-detail"
+                  role="dialog"
+                  aria-modal="true"
+                  aria-label="거래 상세"
+                >
+                  <button
+                    type="button"
+                    className="sheet-close"
+                    onClick={() => setDetailRecord(null)}
+                    aria-label="상세 닫기"
+                  >
+                    <X size={20} />
+                  </button>
+                  <span className="record-detail-label">거래 상세</span>
+                  <h2>{detailRecord.name}</h2>
+                  <dl>
+                    <div><dt>날짜</dt><dd>{detailRecord.date}</dd></div>
+                    <div><dt>유형</dt><dd>{detailRecord.type === "transfer" ? "이동" : detailRecord.type === "income" ? "수입" : "지출"}</dd></div>
+                    <div><dt>분류</dt><dd>{detailRecord.type === "transfer" ? "이동" : [detailRecord.category, detailRecord.minorCategory].filter(Boolean).join(" · ")}</dd></div>
+                    <div><dt>통장</dt><dd>{accounts.find((account) => account.id === detailRecord.accountId)?.name}{detailRecord.toAccountId && ` → ${accounts.find((account) => account.id === detailRecord.toAccountId)?.name}`}</dd></div>
+                    <div><dt>금액</dt><dd>{won(detailRecord.amount)}</dd></div>
+                  </dl>
+                  <div className="record-detail-actions">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setDetailRecord(null);
+                        openEditor(detailRecord);
+                      }}
+                    >
+                      <Pencil size={15} /> 수정
+                    </button>
+                    <button
+                      type="button"
+                      className="delete-record"
+                      onClick={() => removeRecord(detailRecord.id)}
+                    >
+                      <Trash2 size={15} /> 삭제
+                    </button>
+                  </div>
+                </section>
+              </div>
+            )}
             {composer && (
               <div className="sheet-backdrop">
                 <form
@@ -554,17 +631,14 @@ function TransactionsContent() {
                       onChange={(event) => setDate(event.target.value)}
                     />
                   </label>
-                  {type !== "transfer" && (
-                    <label>
-                      내용
-                      <input
-                        value={name}
-                        onChange={(event) => setName(event.target.value)}
-                        placeholder="예: 점심 식사"
-                        autoFocus
-                      />
-                    </label>
-                  )}
+                  <label>
+                    내용
+                    <input
+                      value={name}
+                      onChange={(event) => setName(event.target.value)}
+                      placeholder={type === "transfer" ? "예: 카드 결제" : "예: 점심 식사"}
+                    />
+                  </label>
                   {type === "transfer" ? (
                     <div className="form-split">
                       <label>
@@ -573,9 +647,7 @@ function TransactionsContent() {
                           value={accountId}
                           onChange={(event) => setAccountId(event.target.value)}
                         >
-                          {accounts
-                            .filter((item) => !isDebt(item.id))
-                            .map((item) => (
+                          {accounts.map((item) => (
                               <option key={item.id} value={item.id}>
                                 {item.name}
                               </option>
@@ -679,15 +751,6 @@ function TransactionsContent() {
                           : "수입 기록하기"}
                   </button>
                   {formError && <p className="save-error">{formError}</p>}
-                  {editingId && (
-                    <button
-                      className="delete-record"
-                      type="button"
-                      onClick={removeRecord}
-                    >
-                      <Trash2 size={15} /> 삭제
-                    </button>
-                  )}
                 </form>
               </div>
             )}

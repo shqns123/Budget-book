@@ -6,7 +6,16 @@ import { AppShell } from "@/components/app-shell";
 import { initialTransactions, type Transaction, won } from "@/lib/ledger";
 import { readSharedState } from "@/lib/shared-state";
 
-type Scope = { month: string };
+type Scope = { month: string; selected: string[] };
+
+function withinSelected(items: Transaction[], selected: string[]) {
+  if (!selected.length) return items;
+  return items.filter(
+    (item) =>
+      selected.includes(item.accountId) ||
+      (item.toAccountId && selected.includes(item.toAccountId)),
+  );
+}
 
 function totals(items: Transaction[]) {
   const income = items
@@ -70,13 +79,19 @@ function MonthlyReport({
   scope: Scope;
   records: Transaction[];
 }) {
-  const current = records.filter((item) =>
-    item.date.replaceAll(".", "-").startsWith(scope.month),
+  const current = withinSelected(
+    records.filter((item) =>
+      item.date.replaceAll(".", "-").startsWith(scope.month),
+    ),
+    scope.selected,
   );
   const [year, month] = scope.month.split("-").map(Number);
   const previousKey = `${month === 1 ? year - 1 : year}-${String(month === 1 ? 12 : month - 1).padStart(2, "0")}`;
-  const previous = records.filter((item) =>
-    item.date.replaceAll(".", "-").startsWith(previousKey),
+  const previous = withinSelected(
+    records.filter((item) =>
+      item.date.replaceAll(".", "-").startsWith(previousKey),
+    ),
+    scope.selected,
   );
   const now = totals(current);
   const before = totals(previous);
@@ -177,7 +192,12 @@ function YearlyReport({
   const rows = Array.from({ length: 12 }, (_, index) => {
     const key = `${year}-${String(index + 1).padStart(2, "0")}`;
     const values = totals(
-      records.filter((item) => item.date.replaceAll(".", "-").startsWith(key)),
+      withinSelected(
+        records.filter((item) =>
+          item.date.replaceAll(".", "-").startsWith(key),
+        ),
+        scope.selected,
+      ),
     );
     return { month: `${index + 1}월`, ...values };
   });

@@ -26,7 +26,7 @@ export default function OverviewPage() {
   }, []);
   return (
     <AppShell>
-      {({ selected, month, updateSelected }) => {
+      {({ selected, month, updateSelected, saveSelected }) => {
         const inMonth = records.filter((item) =>
           item.date.startsWith(month.replace("-", ".")),
         );
@@ -94,25 +94,39 @@ export default function OverviewPage() {
                 <span>{budget ? "이번 달 남은 예산" : "이번 달 예산"}</span>
                 {showAccounts && (
                   <div className="budget-account-menu">
-                    <button onClick={() => updateSelected([])}>
-                      전체 통장
-                    </button>
-                    {accounts.map((account) => (
-                      <label key={account.id}>
-                        <input
-                          type="checkbox"
-                          checked={selected.includes(account.id)}
-                          onChange={() =>
-                            updateSelected(
-                              selected.includes(account.id)
-                                ? selected.filter((id) => id !== account.id)
-                                : [...selected, account.id],
-                            )
-                          }
-                        />
-                        {account.name}
-                      </label>
-                    ))}
+                    <div className="budget-account-actions">
+                      <button
+                        onClick={() => {
+                          updateSelected([]);
+                        }}
+                      >
+                        전체 통장
+                      </button>
+                      <button
+                        className="budget-selection-save"
+                        onClick={saveSelected}
+                      >
+                        저장
+                      </button>
+                    </div>
+                    <div className="budget-account-list">
+                      {accounts.map((account) => (
+                        <label key={account.id}>
+                          <input
+                            type="checkbox"
+                            checked={selected.includes(account.id)}
+                            onChange={() => {
+                              updateSelected(
+                                selected.includes(account.id)
+                                  ? selected.filter((id) => id !== account.id)
+                                  : [...selected, account.id],
+                              );
+                            }}
+                          />
+                          {account.name}
+                        </label>
+                      ))}
+                    </div>
                   </div>
                 )}
                 <strong
