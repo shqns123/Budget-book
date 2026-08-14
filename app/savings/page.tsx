@@ -150,6 +150,14 @@ export default function SavingsPage() {
   const selectedMonthlyMonths = monthlyMonths
     .filter((item) => item.goalId === selectedGoalId)
     .sort((left, right) => left.month.localeCompare(right.month));
+  const nextMonthlyMonth = (() => {
+    const existing = new Set(selectedMonthlyMonths.map((item) => item.month));
+    const latest = [...existing].sort().at(-1);
+    if (!latest) return currentMonth;
+    const [year, month] = latest.split("-").map(Number);
+    const next = new Date(year, month, 1);
+    return `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, "0")}`;
+  })();
   function saveMonthlyPlans(items: MonthlySavingsPlan[]) {
     setMonthlyPlans(items);
     void saveSharedState("monthlySavingsPlans", items);
@@ -603,7 +611,11 @@ export default function SavingsPage() {
                   onClick={() =>
                     saveMonthlyMonths([
                       ...monthlyMonths,
-                      { id: crypto.randomUUID(), goalId: selectedGoalId, month: currentMonth },
+                      {
+                        id: crypto.randomUUID(),
+                        goalId: selectedGoalId,
+                        month: nextMonthlyMonth,
+                      },
                     ])
                   }
                 >
