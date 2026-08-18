@@ -19,6 +19,7 @@ import {
   categories,
   formatNumber,
   hydrateLedgerSettings,
+  inferCategoryTransactionType,
   initialTransactions,
   parseNumberInput,
   type RecurringExpenseTemplate,
@@ -29,10 +30,7 @@ import { readSharedState, saveSharedState } from "@/lib/shared-state";
 
 const makeCategoryOptions = (type: "income" | "expense") =>
   categories
-    .filter(
-      (category) =>
-        !category.transactionType || category.transactionType === type,
-    )
+    .filter((category) => category.transactionType === type)
     .reduce<Record<string, string[]>>((result, category) => {
       const options = result[category.majorCategory] ?? [];
       if (!options.includes(category.minorCategory)) {
@@ -105,28 +103,56 @@ function TransactionsContent() {
     }
   }, [searchParams]);
   useEffect(() => {
-    void readSharedState("settings", { accounts: [], categories: [] }).then(
-      (settings) => {
-        hydrateLedgerSettings(settings);
-        setSettingsVersion((version) => version + 1);
-        setAccountId((id) =>
-          id || accounts.find((account) => !isDebt(account.id))?.id || accounts[0]?.id || "",
-        );
-        setToAccountId((id) =>
-          id || accounts.find((account) => account.id !== id)?.id || accounts[0]?.id || "",
-        );
-      },
-    );
-  }, []);
-  useEffect(() => {
     void Promise.all([
+      readSharedState("settings", {
+        accounts: [],
+        categories: [] as Array<{
+          major: string;
+          minor: string;
+          fixed: boolean;
+          transactionType?: "income" | "expense";
+        }>,
+      }),
       readSharedState("transactions", initialTransactions),
       readSharedState("recurring", [] as RecurringExpenseTemplate[]),
-    ]).then(([savedRecords, savedRecurring]) => {
+    ]).then(([settings, savedRecords, savedRecurring]) => {
+      const migratedCategories = settings.categories.map((category) => ({
+        ...category,
+        transactionType:
+          category.transactionType ??
+          inferCategoryTransactionType(
+            category.major,
+            category.minor,
+            savedRecords,
+          ),
+      }));
+      const migratedSettings = {
+        ...settings,
+        categories: migratedCategories,
+      };
+      hydrateLedgerSettings(migratedSettings);
+      setSettingsVersion((version) => version + 1);
+      setAccountId(
+        (id) =>
+          id ||
+          accounts.find((account) => !isDebt(account.id))?.id ||
+          accounts[0]?.id ||
+          "",
+      );
+      setToAccountId(
+        (id) =>
+          id ||
+          accounts.find((account) => account.id !== id)?.id ||
+          accounts[0]?.id ||
+          "",
+      );
       // A record entered before the first API response must not be replaced
       // by that older response.
       if (!recordsChangedBeforeLoad.current) setRecords(savedRecords);
       setCustomRecurring(savedRecurring);
+      if (settings.categories.some((category) => !category.transactionType)) {
+        void saveSharedState("settings", migratedSettings);
+      }
     });
   }, []);
   async function persistRecords(next: Transaction[]) {
@@ -197,7 +223,7 @@ function TransactionsContent() {
       record.type === "income"
         ? makeCategoryOptions("income")
         : makeCategoryOptions("expense");
-    const fallbackCategory = record.type === "income" ? "💸근로소득" : "🏬식비";
+    const fallbackCategory = Object.keys(options)[0] ?? "";
     const nextCategory =
       record.type === "transfer"
         ? "이동"
@@ -214,12 +240,20 @@ function TransactionsContent() {
     setCategory(nextCategory);
     setMinorCategory(
       record.minorCategory ??
-        (record.type === "transfer" ? "" : options[nextCategory][0]),
+        (record.type === "transfer" ? "" : options[nextCategory]?.[0] ?? ""),
     );
     setComposer(true);
   }
   function openDetails(record: Transaction) {
     setDetailRecord(record);
+  }
+  function changeTransactionType(nextType: Transaction["type"]) {
+    setType(nextType);
+    if (nextType === "transfer") return;
+    const options = makeCategoryOptions(nextType);
+    const firstCategory = Object.keys(options)[0] ?? "";
+    setCategory(firstCategory);
+    setMinorCategory(options[firstCategory]?.[0] ?? "");
   }
   async function save(
     month: string,
@@ -494,29 +528,21 @@ function TransactionsContent() {
                     <button
                       type="button"
                       className={type === "expense" ? "selected" : ""}
-                      onClick={() => {
-                        setType("expense");
-                        setCategory("🏬식비");
-                        setMinorCategory("식료품");
-                      }}
+                      onClick={() => changeTransactionType("expense")}
                     >
                       지출
                     </button>
                     <button
                       type="button"
                       className={type === "income" ? "selected" : ""}
-                      onClick={() => {
-                        setType("income");
-                        setCategory("💸근로소득");
-                        setMinorCategory("월급");
-                      }}
+                      onClick={() => changeTransactionType("income")}
                     >
                       수입
                     </button>
                     <button
                       type="button"
                       className={type === "transfer" ? "selected" : ""}
-                      onClick={() => setType("transfer")}
+                      onClick={() => changeTransactionType("transfer")}
                     >
                       이동
                     </button>

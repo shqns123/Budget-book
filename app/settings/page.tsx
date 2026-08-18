@@ -17,8 +17,10 @@ import { readSharedState, saveSharedState } from "@/lib/shared-state";
 import {
   formatNumber,
   hydrateLedgerSettings,
+  inferCategoryTransactionType,
   parseNumberInput,
   type RecurringExpenseTemplate,
+  type Transaction,
 } from "@/lib/ledger";
 
 type Kind = "bank" | "card" | "loan" | "savings" | "cash";
@@ -35,7 +37,12 @@ type AccountSetting = {
   paymentDay?: number;
   hidden?: boolean;
 };
-type Category = { major: string; minor: string; fixed: boolean };
+type Category = {
+  major: string;
+  minor: string;
+  fixed: boolean;
+  transactionType: "income" | "expense";
+};
 type SharedSettings = {
   accounts: AccountSetting[];
   categories: Category[];
@@ -101,6 +108,27 @@ export default function SettingsPage() {
       })),
     [accounts],
   );
+  const categoryGroups = useMemo(() => {
+    const groups = new Map<
+      string,
+      {
+        major: string;
+        transactionType: "income" | "expense";
+        rows: Array<{ category: Category; index: number }>;
+      }
+    >();
+    categories.forEach((category, index) => {
+      const key = `${category.transactionType}:${category.major}`;
+      const group = groups.get(key) ?? {
+        major: category.major,
+        transactionType: category.transactionType,
+        rows: [],
+      };
+      group.rows.push({ category, index });
+      groups.set(key, group);
+    });
+    return [...groups.values()];
+  }, [categories]);
   const budgetableAccounts = useMemo(
     () =>
       accounts.filter(
@@ -115,10 +143,26 @@ export default function SettingsPage() {
       readSharedState("settings", initialSettings),
       readSharedState("budgets", [] as MonthlyBudget[]),
       readSharedState("recurring", [] as RecurringExpenseTemplate[]),
-    ]).then(([sharedSettings, sharedBudgets, sharedRecurring]) => {
-      hydrateLedgerSettings(sharedSettings);
+      readSharedState("transactions", [] as Transaction[]),
+    ]).then(
+      ([sharedSettings, sharedBudgets, sharedRecurring, sharedTransactions]) => {
+      const migratedCategories = sharedSettings.categories.map((category) => ({
+        ...category,
+        transactionType:
+          category.transactionType ??
+          inferCategoryTransactionType(
+            category.major,
+            category.minor,
+            sharedTransactions,
+          ),
+      }));
+      const migratedSettings = {
+        ...sharedSettings,
+        categories: migratedCategories,
+      };
+      hydrateLedgerSettings(migratedSettings);
       setAccounts(sharedSettings.accounts);
-      setCategories(sharedSettings.categories);
+      setCategories(migratedCategories);
       setStartYear(sharedSettings.startYear);
       setFiscalMonth(sharedSettings.fiscalMonth);
       // Keep an amount the user entered while the initial API request was in
@@ -126,6 +170,13 @@ export default function SettingsPage() {
       if (!budgetsChangedBeforeLoad.current) setBudgets(sharedBudgets);
       setRecurring(sharedRecurring);
       settingsLoaded.current = true;
+      if (
+        sharedSettings.categories.some(
+          (category) => !category.transactionType,
+        )
+      ) {
+        void saveSharedState("settings", migratedSettings);
+      }
     });
   }, []);
   useEffect(() => {
@@ -191,6 +242,62 @@ export default function SettingsPage() {
         item.id === id ? { ...item, ...updates } : item,
       ),
     );
+  }
+  function addCategoryGroup() {
+    const base = "새 대분류";
+    let major = base;
+    let suffix = 2;
+    while (
+      categories.some(
+        (category) =>
+          category.transactionType === "expense" && category.major === major,
+      )
+    ) {
+      major = `${base} ${suffix}`;
+      suffix += 1;
+    }
+    setCategories((items) => [
+      ...items,
+      {
+        major,
+        minor: "새 소분류",
+        fixed: false,
+        transactionType: "expense",
+      },
+    ]);
+  }
+  function updateCategoryGroup(
+    transactionType: Category["transactionType"],
+    major: string,
+    updates: Partial<Pick<Category, "major" | "transactionType">>,
+  ) {
+    setCategories((items) =>
+      items.map((item) =>
+        item.transactionType === transactionType && item.major === major
+          ? { ...item, ...updates }
+          : item,
+      ),
+    );
+  }
+  function addMinorCategory(
+    transactionType: Category["transactionType"],
+    major: string,
+  ) {
+    const siblings = categories.filter(
+      (category) =>
+        category.transactionType === transactionType && category.major === major,
+    );
+    const base = "새 소분류";
+    let minor = base;
+    let suffix = 2;
+    while (siblings.some((category) => category.minor === minor)) {
+      minor = `${base} ${suffix}`;
+      suffix += 1;
+    }
+    setCategories((items) => [
+      ...items,
+      { major, minor, fixed: false, transactionType },
+    ]);
   }
   function toggleHidden(id: string) {
     setAccounts((rows) =>
@@ -345,73 +452,108 @@ export default function SettingsPage() {
             <section className="setting-table category-table">
               <header>
                 <h2>대분류와 소분류</h2>
-                <button
-                  onClick={() =>
-                    setCategories((items) => [
-                      ...items,
-                      { major: "기타", minor: "새 분류", fixed: false },
-                    ])
-                  }
-                >
-                  <CirclePlus size={16} /> 분류 추가
+                <button onClick={addCategoryGroup}>
+                  <CirclePlus size={16} /> 대분류 추가
                 </button>
               </header>
-              {categories.map((category, index) => (
-                <article
-                  className="category-setting"
-                  key={`${category.major}-${category.minor}-${index}`}
-                >
-                  <input
-                    value={category.major}
-                    onChange={(event) =>
-                      setCategories((items) =>
-                        items.map((item, itemIndex) =>
-                          itemIndex === index
-                            ? { ...item, major: event.target.value }
-                            : item,
-                        ),
-                      )
-                    }
-                  />
-                  <input
-                    value={category.minor}
-                    onChange={(event) =>
-                      setCategories((items) =>
-                        items.map((item, itemIndex) =>
-                          itemIndex === index
-                            ? { ...item, minor: event.target.value }
-                            : item,
-                        ),
-                      )
-                    }
-                  />
-                  <label>
-                    <input
-                      type="checkbox"
-                      checked={category.fixed}
-                      onChange={() =>
-                        setCategories((items) =>
-                          items.map((item, itemIndex) =>
-                            itemIndex === index
-                              ? { ...item, fixed: !item.fixed }
-                              : item,
-                          ),
+              <div className="category-group-list">
+                {categoryGroups.map((group) => (
+                  <article
+                    className="category-group"
+                    key={`${group.transactionType}-${group.major}`}
+                  >
+                  <div className="category-group-head">
+                    <select
+                      value={group.transactionType}
+                      aria-label={`${group.major} 거래 유형`}
+                      onChange={(event) =>
+                        updateCategoryGroup(
+                          group.transactionType,
+                          group.major,
+                          {
+                            transactionType: event.target.value as
+                              | "income"
+                              | "expense",
+                          },
                         )
                       }
-                    />{" "}
-                    고정
-                  </label>
-                  <button
-                    onClick={() =>
-                      setCategories((items) =>
-                        items.filter((_, itemIndex) => itemIndex !== index),
-                      )
-                    }
-                  >
-                    삭제
-                  </button>
-                </article>
-              ))}
+                    >
+                      <option value="expense">지출</option>
+                      <option value="income">수입</option>
+                    </select>
+                    <input
+                      value={group.major}
+                      aria-label="대분류"
+                      onChange={(event) =>
+                        updateCategoryGroup(
+                          group.transactionType,
+                          group.major,
+                          { major: event.target.value },
+                        )
+                      }
+                    />
+                    <button
+                      type="button"
+                      onClick={() =>
+                        addMinorCategory(group.transactionType, group.major)
+                      }
+                    >
+                      <CirclePlus size={14} /> 소분류 추가
+                    </button>
+                  </div>
+                  <div className="category-minor-list">
+                    {group.rows.map(({ category, index }) => (
+                      <div
+                        className="category-minor-row"
+                        key={`${category.minor}-${index}`}
+                      >
+                        <input
+                          value={category.minor}
+                          aria-label={`${group.major} 소분류`}
+                          onChange={(event) =>
+                            setCategories((items) =>
+                              items.map((item, itemIndex) =>
+                                itemIndex === index
+                                  ? { ...item, minor: event.target.value }
+                                  : item,
+                              ),
+                            )
+                          }
+                        />
+                        <label>
+                          <input
+                            type="checkbox"
+                            checked={category.fixed}
+                            onChange={() =>
+                              setCategories((items) =>
+                                items.map((item, itemIndex) =>
+                                  itemIndex === index
+                                    ? { ...item, fixed: !item.fixed }
+                                    : item,
+                                ),
+                              )
+                            }
+                          />{" "}
+                          고정비
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setCategories((items) =>
+                              items.filter(
+                                (_, itemIndex) => itemIndex !== index,
+                              ),
+                            )
+                          }
+                        >
+                          삭제
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                  </article>
+                ))}
+              </div>
             </section>
           ) : view === "budgets" ? (
             <section className="setting-table budget-table">

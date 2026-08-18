@@ -1257,34 +1257,74 @@ a {
   opacity: 0.25;
   cursor: not-allowed;
 }
-.category-setting {
+.category-group-list {
   display: grid;
-  grid-template-columns: 1fr 1fr 74px 40px;
+  gap: 14px;
+  margin-top: 18px;
+}
+.category-group {
+  overflow: hidden;
+  border: 1px solid #e8e3df;
+  border-radius: 16px;
+  background: #fff;
+}
+.category-group-head {
+  display: grid;
+  grid-template-columns: 88px minmax(0, 1fr) auto;
   gap: 9px;
   align-items: center;
-  padding: 10px 0;
-  border-top: 1px solid #eee;
+  padding: 13px;
+  background: var(--peach);
 }
-.category-setting input[type="text"],
-.category-setting > input {
+.category-group-head input,
+.category-group-head select,
+.category-minor-row > input {
   width: 100%;
   padding: 9px;
-  border: 1px solid #e5e5e6;
+  border: 1px solid #e1d8d2;
   border-radius: 10px;
-  background: var(--fog);
+  background: #fff;
+  color: var(--ink);
   font-size: 12px;
 }
-.category-setting label {
+.category-group-head > button {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+  padding: 8px 9px;
+  border: 0;
+  background: transparent;
+  color: var(--sienna);
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.category-minor-list {
+  padding: 4px 13px 8px;
+}
+.category-minor-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 74px 40px;
+  gap: 9px;
+  align-items: center;
+  padding: 9px 0;
+  border-top: 1px solid #eee;
+}
+.category-minor-row:first-child {
+  border-top: 0;
+}
+.category-minor-row label {
   display: flex;
   gap: 5px;
   align-items: center;
   color: var(--slate);
   font-size: 11px;
+  white-space: nowrap;
 }
-.category-setting label input {
+.category-minor-row label input {
   accent-color: var(--ink);
 }
-.category-setting button {
+.category-minor-row > button {
   border: 0;
   background: transparent;
   color: var(--slate);
@@ -1318,15 +1358,22 @@ a {
   .opening-balance {
     font-size: 14px;
   }
-  .category-setting {
-    grid-template-columns: 1fr 1fr;
+  .category-group-head {
+    grid-template-columns: 82px minmax(0, 1fr);
   }
-  .category-setting label {
-    grid-row: 2;
+  .category-group-head > button {
+    grid-column: 1 / -1;
+    justify-self: start;
+    padding-left: 0;
   }
-  .category-setting button {
+  .category-minor-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .category-minor-row label {
+    grid-column: 1;
+  }
+  .category-minor-row > button {
     grid-column: 2;
-    justify-self: end;
     grid-row: 2;
   }
 }

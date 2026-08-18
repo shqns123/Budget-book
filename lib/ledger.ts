@@ -20,7 +20,7 @@ export type LedgerCategory = {
   majorCategory: string;
   minorCategory: string;
   fixed: boolean;
-  transactionType?: "income" | "expense";
+  transactionType: "income" | "expense";
 };
 
 type StoredAccount = {
@@ -87,6 +87,29 @@ export const categories: LedgerCategory[] = [];
 export const initialTransactions: Transaction[] = [];
 export const recurringExpenseTemplates: RecurringExpenseTemplate[] = [];
 
+export function inferCategoryTransactionType(
+  majorCategory: string,
+  minorCategory: string,
+  transactions: Transaction[],
+): "income" | "expense" {
+  const comparable = transactions.filter(
+    (transaction) =>
+      transaction.type !== "transfer" &&
+      transaction.category === majorCategory,
+  );
+  const exact = comparable.filter(
+    (transaction) => transaction.minorCategory === minorCategory,
+  );
+  const candidates = exact.length ? exact : comparable;
+  const incomeCount = candidates.filter(
+    (transaction) => transaction.type === "income",
+  ).length;
+  const expenseCount = candidates.filter(
+    (transaction) => transaction.type === "expense",
+  ).length;
+  return incomeCount > expenseCount ? "income" : "expense";
+}
+
 export function hydrateLedgerSettings(value: unknown) {
   const settings = value as {
     accounts?: StoredAccount[];
@@ -124,7 +147,7 @@ export function hydrateLedgerSettings(value: unknown) {
       majorCategory: category.majorCategory ?? category.major ?? "",
       minorCategory: category.minorCategory ?? category.minor ?? "",
       fixed: category.fixed ?? category.isFixed ?? false,
-      transactionType: category.transactionType,
+      transactionType: category.transactionType ?? "expense",
     })),
   );
 }
