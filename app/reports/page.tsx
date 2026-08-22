@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ChevronRight } from "lucide-react";
+import { ChevronRight, X } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
 import { initialTransactions, type Transaction, won } from "@/lib/ledger";
 import { readSharedState } from "@/lib/shared-state";
@@ -79,6 +79,7 @@ function MonthlyReport({
   scope: Scope;
   records: Transaction[];
 }) {
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const current = withinSelected(
     records.filter((item) =>
       item.date.replaceAll(".", "-").startsWith(scope.month),
@@ -114,6 +115,36 @@ function MonthlyReport({
   const fixedRatio = now.expense
     ? Math.round((now.fixedExpense / now.expense) * 100)
     : 0;
+  const categoryRecords = selectedCategory
+    ? current
+        .filter(
+          (item) =>
+            item.type === "expense" && item.category === selectedCategory,
+        )
+        .sort((left, right) => right.date.localeCompare(left.date))
+    : [];
+  const selectedCategoryTotal = categoryRecords.reduce(
+    (sum, item) => sum + Math.abs(item.amount),
+    0,
+  );
+  const minorCategoryTotals = Object.entries(
+    categoryRecords.reduce<Record<string, number>>((result, item) => {
+      const minorCategory = item.minorCategory?.trim() || "미분류";
+      result[minorCategory] =
+        (result[minorCategory] ?? 0) + Math.abs(item.amount);
+      return result;
+    }, {}),
+  ).sort((left, right) => right[1] - left[1]);
+
+  useEffect(() => {
+    if (!selectedCategory) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setSelectedCategory(null);
+    };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [selectedCategory]);
+
   return (
     <>
       <section className="report-metrics">
@@ -131,11 +162,17 @@ function MonthlyReport({
             <span>이번 달</span>
           </header>
           {categoryTotals.map(([category, amount]) => (
-            <div className="report-category" key={category}>
+            <button
+              type="button"
+              className="report-category"
+              key={category}
+              aria-label={`${category} 상세 내역 보기`}
+              onClick={() => setSelectedCategory(category)}
+            >
               <b>{category}</b>
               <strong>−{won(amount)}</strong>
               <ChevronRight size={15} />
-            </div>
+            </button>
           ))}
         </article>
         <article className="report-surface top-expenses">
@@ -177,6 +214,65 @@ function MonthlyReport({
           </div>
         </div>
       </section>
+      {selectedCategory && (
+        <div
+          className="sheet-backdrop detail-backdrop"
+          onMouseDown={() => setSelectedCategory(null)}
+        >
+          <section
+            className="category-detail-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label={`${selectedCategory} 상세 내역`}
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <button
+              type="button"
+              className="sheet-close"
+              aria-label="상세 내역 닫기"
+              onClick={() => setSelectedCategory(null)}
+            >
+              <X size={20} />
+            </button>
+            <span className="category-detail-kicker">{scope.month}</span>
+            <header className="category-detail-heading">
+              <div>
+                <h2>{selectedCategory}</h2>
+                <p>{categoryRecords.length}건의 지출</p>
+              </div>
+              <strong>−{won(selectedCategoryTotal)}</strong>
+            </header>
+
+            <section className="category-detail-section">
+              <h3>소분류</h3>
+              <div className="category-detail-summary">
+                {minorCategoryTotals.map(([minorCategory, amount]) => (
+                  <div key={minorCategory}>
+                    <span>{minorCategory}</span>
+                    <strong>−{won(amount)}</strong>
+                  </div>
+                ))}
+              </div>
+            </section>
+
+            <section className="category-detail-section">
+              <h3>거래 내역</h3>
+              <div className="category-detail-transactions">
+                {categoryRecords.map((item) => (
+                  <article key={item.id}>
+                    <time>{item.date.replaceAll("-", ".")}</time>
+                    <div>
+                      <b>{item.name}</b>
+                      <small>{item.minorCategory?.trim() || "미분류"}</small>
+                    </div>
+                    <strong>−{won(item.amount)}</strong>
+                  </article>
+                ))}
+              </div>
+            </section>
+          </section>
+        </div>
+      )}
     </>
   );
 }
