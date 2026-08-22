@@ -130,7 +130,8 @@ export default function SavingsPage() {
     setPlan(items);
     void saveSharedState("savingsPlan", items);
     const totals = items.reduce<Record<string, number>>((result, item) => {
-      result[item.goalId] = (result[item.goalId] ?? 0) + item.amount;
+      result[item.goalId] =
+        (result[item.goalId] ?? 0) + resolvePlanAmount(item);
       return result;
     }, {});
     const nextGoals = goals.map((goal) => ({
@@ -140,12 +141,6 @@ export default function SavingsPage() {
     setGoals(nextGoals);
     void saveSharedState("savingsGoals", nextGoals);
   }
-  const selectedGoal = goals.find((goal) => goal.id === selectedGoalId);
-  const selectedPlan = plan.filter((item) => item.goalId === selectedGoalId);
-  const selectedPlanTotal = selectedPlan.reduce(
-    (sum, item) => sum + item.amount,
-    0,
-  );
   const currentMonth = new Date().toISOString().slice(0, 7);
   const selectedMonthlyMonths = monthlyMonths
     .filter((item) => item.goalId === selectedGoalId)
@@ -307,6 +302,19 @@ export default function SavingsPage() {
       amount: amounts.get(account.id) ?? 0,
     }));
   }, [records, settingsVersion]);
+  function resolvePlanAmount(item: SavingsPlanItem) {
+    if (!item.accountId) return item.amount;
+    const linkedAccount = accountBalances.find(
+      ({ account }) => account.id === item.accountId,
+    );
+    return linkedAccount ? Math.abs(linkedAccount.amount) : item.amount;
+  }
+  const selectedGoal = goals.find((goal) => goal.id === selectedGoalId);
+  const selectedPlan = plan.filter((item) => item.goalId === selectedGoalId);
+  const selectedPlanTotal = selectedPlan.reduce(
+    (sum, item) => sum + resolvePlanAmount(item),
+    0,
+  );
   function addAccountToPlan(accountId: string) {
     const found = accountBalances.find((item) => item.account.id === accountId);
     if (!found) return;
@@ -475,7 +483,18 @@ export default function SavingsPage() {
                     <input
                       type="text"
                       inputMode="numeric"
-                      value={formatNumber(item.amount)}
+                      value={formatNumber(resolvePlanAmount(item))}
+                      readOnly={Boolean(item.accountId)}
+                      aria-label={
+                        item.accountId
+                          ? `${item.name} 현재 계좌 잔액`
+                          : `${item.name} 계획 금액`
+                      }
+                      title={
+                        item.accountId
+                          ? "연결된 계좌의 현재 잔액이 자동 반영됩니다."
+                          : undefined
+                      }
                       onChange={(event) =>
                         savePlan(
                           plan.map((row) =>
@@ -541,7 +560,10 @@ export default function SavingsPage() {
                   <span>계획 합계</span>
                   <strong>
                     {won(
-                      selectedPlan.reduce((sum, item) => sum + item.amount, 0),
+                      selectedPlan.reduce(
+                        (sum, item) => sum + resolvePlanAmount(item),
+                        0,
+                      ),
                     )}
                   </strong>
                 </footer>
