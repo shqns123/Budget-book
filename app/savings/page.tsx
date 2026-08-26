@@ -6,6 +6,7 @@ import { AppShell } from "@/components/app-shell";
 import {
   accounts,
   accountDetails,
+  calculateAccountBalances,
   formatNumber,
   hydrateLedgerSettings,
   initialTransactions,
@@ -273,30 +274,7 @@ export default function SavingsPage() {
     setShowPlanSettings(false);
   }
   const accountBalances = useMemo(() => {
-    const amounts = new Map(
-      accountDetails.map((account) => [
-        account.id,
-        account.openingBalance,
-      ]),
-    );
-    const isLiability = (accountId: string) =>
-      accountDetails.find((account) => account.id === accountId)
-        ?.classification !== "asset";
-    const apply = (accountId: string, assetChange: number) =>
-      amounts.set(
-        accountId,
-        (amounts.get(accountId) ?? 0) +
-          (isLiability(accountId) ? -assetChange : assetChange),
-      );
-    records.forEach((item) => {
-      if (item.type === "income") apply(item.accountId, item.amount);
-      if (item.type === "expense")
-        apply(item.accountId, -Math.abs(item.amount));
-      if (item.type === "transfer") {
-        apply(item.accountId, -Math.abs(item.amount));
-        if (item.toAccountId) apply(item.toAccountId, Math.abs(item.amount));
-      }
-    });
+    const amounts = calculateAccountBalances(accountDetails, records);
     return accountDetails.map((account) => ({
       account,
       amount: amounts.get(account.id) ?? 0,

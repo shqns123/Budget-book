@@ -3,7 +3,13 @@
 import { ArrowDownRight, ArrowUpRight, Settings } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { AppShell } from "@/components/app-shell";
-import { accounts, initialTransactions, won } from "@/lib/ledger";
+import {
+  accounts,
+  accountDetails,
+  calculateAccountBalances,
+  initialTransactions,
+  won,
+} from "@/lib/ledger";
 import { type MonthlyBudget } from "@/lib/budgets";
 import { readSharedState } from "@/lib/shared-state";
 
@@ -27,6 +33,11 @@ export default function OverviewPage() {
   return (
     <AppShell>
       {({ selected, month, updateSelected, saveSelected }) => {
+        const accountBalances = calculateAccountBalances(
+          accountDetails,
+          records,
+          `${month}-31`,
+        );
         const inMonth = records.filter((item) =>
           item.date.startsWith(month.replace("-", ".")),
         );
@@ -50,22 +61,20 @@ export default function OverviewPage() {
           (sum, item) => sum + item.amount,
           0,
         );
-        const budgetedExpense = filtered
-          .filter(
-            (item) =>
-              item.type === "expense" && selected.includes(item.accountId),
-          )
-          .reduce((sum, item) => sum + Math.abs(item.amount), 0);
         const budgetDetails = selectedBudgets.map((budgetItem) => ({
           ...budgetItem,
-          used: filtered
-            .filter(
-              (item) =>
-                item.type === "expense" &&
-                item.accountId === budgetItem.accountId,
-            )
-            .reduce((sum, item) => sum + Math.abs(item.amount), 0),
+          balance: accountBalances.get(budgetItem.accountId) ?? 0,
         }));
+        const remainingBudget = budgetDetails.reduce(
+          (sum, item) => sum + item.balance,
+          0,
+        );
+        const budgetUsed = Math.min(
+          budget,
+          Math.max(0, budget - remainingBudget),
+        );
+        const displaySignedWon = (amount: number) =>
+          `${amount < 0 ? "−" : ""}${won(amount)}`;
         return (
           <>
             <section className="overview-cards">
@@ -135,7 +144,7 @@ export default function OverviewPage() {
                   {!selected.length
                     ? "통장을 선택해 주세요"
                     : budget
-                      ? won(budget - budgetedExpense)
+                      ? displaySignedWon(remainingBudget)
                       : "예산이 지정되지 않았어요"}
                 </strong>
                 {selected.length && budget ? (
@@ -143,12 +152,12 @@ export default function OverviewPage() {
                     <div className="progress">
                       <i
                         style={{
-                          width: `${Math.min(100, (budgetedExpense / budget) * 100)}%`,
+                          width: `${Math.min(100, (budgetUsed / budget) * 100)}%`,
                         }}
                       />
                     </div>
                     <small>
-                      예산 {won(budget)} 중 {won(budgetedExpense)} 사용
+                      예산 {won(budget)} 중 {won(budgetUsed)} 사용
                     </small>
                     <div className="budget-preview">
                       {budgetDetails.slice(0, 2).map((item) => (
@@ -158,7 +167,7 @@ export default function OverviewPage() {
                               (account) => account.id === item.accountId,
                             )?.name
                           }{" "}
-                          {won(item.amount - item.used)} 남음
+                          {displaySignedWon(item.balance)} 남음
                         </span>
                       ))}
                     </div>

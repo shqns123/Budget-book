@@ -67,6 +67,43 @@ export type Transaction = {
   memo?: string;
 };
 
+export function calculateAccountBalances(
+  details: AccountDetails[],
+  records: Transaction[],
+  cutoff?: string,
+) {
+  const amounts = new Map(
+    details.map((account) => [account.id, account.openingBalance]),
+  );
+  const accountsById = new Map(
+    details.map((account) => [account.id, account]),
+  );
+  const applyChange = (accountId: string, assetChange: number) => {
+    const account = accountsById.get(accountId);
+    const change =
+      account?.classification === "asset" ? assetChange : -assetChange;
+    amounts.set(accountId, (amounts.get(accountId) ?? 0) + change);
+  };
+
+  records
+    .filter(
+      (item) =>
+        !cutoff || item.date.replaceAll(".", "-") <= cutoff,
+    )
+    .forEach((item) => {
+      if (item.type === "income") applyChange(item.accountId, item.amount);
+      if (item.type === "expense")
+        applyChange(item.accountId, -Math.abs(item.amount));
+      if (item.type === "transfer") {
+        applyChange(item.accountId, -Math.abs(item.amount));
+        if (item.toAccountId)
+          applyChange(item.toAccountId, Math.abs(item.amount));
+      }
+    });
+
+  return amounts;
+}
+
 export type RecurringExpenseTemplate = {
   id: string;
   name: string;

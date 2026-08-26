@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { AppShell } from "@/components/app-shell";
 import {
   accountDetails,
+  calculateAccountBalances,
   hydrateLedgerSettings,
   initialTransactions,
   type AccountDetails,
@@ -28,32 +29,11 @@ export default function BalancePage() {
     <AppShell>
       {({ month }) => {
         const cutoff = `${month}-31`;
-        const amounts = new Map(
-          accountDetails.map((account) => [
-            account.id,
-            account.openingBalance,
-          ]),
+        const amounts = calculateAccountBalances(
+          accountDetails,
+          records,
+          cutoff,
         );
-        const isLiability = (accountId: string) =>
-          accountDetails.find((account) => account.id === accountId)
-            ?.classification !== "asset";
-        const applyChange = (accountId: string, assetChange: number) => {
-          const change = isLiability(accountId) ? -assetChange : assetChange;
-          amounts.set(accountId, (amounts.get(accountId) ?? 0) + change);
-        };
-        records
-          .filter((item) => item.date.replaceAll(".", "-") <= cutoff)
-          .forEach((item) => {
-            if (item.type === "income")
-              applyChange(item.accountId, item.amount);
-            if (item.type === "expense")
-              applyChange(item.accountId, -Math.abs(item.amount));
-            if (item.type === "transfer") {
-              applyChange(item.accountId, -Math.abs(item.amount));
-              if (item.toAccountId)
-                applyChange(item.toAccountId, Math.abs(item.amount));
-            }
-          });
         const scoped = accountDetails;
         const groups = (classification: string) =>
           Object.values(
@@ -107,7 +87,10 @@ export default function BalancePage() {
               </div>
               <aside>
                 <span>자산</span>
-                <b>{won(assetTotal)}</b>
+                <b>
+                  {assetTotal < 0 ? "−" : ""}
+                  {won(assetTotal)}
+                </b>
                 <i />
                 <span>부채</span>
                 <b>{won(liabilityTotal)}</b>
@@ -141,6 +124,9 @@ function BalanceGroup({
   groups: AccountDetails[][];
   amounts: Map<string, number>;
 }) {
+  const signedAssets = heading === "자산";
+  const displayAmount = (amount: number) =>
+    `${signedAssets && amount < 0 ? "−" : ""}${won(amount)}`;
   return (
     <article className="balance-surface">
       <header>
@@ -160,19 +146,18 @@ function BalanceGroup({
                 : group[0].majorCategory}
             </b>
             <strong>
-              {won(
-                group.reduce(
-                  (sum, account) =>
-                    sum + Math.abs(amounts.get(account.id) ?? 0),
-                  0,
-                ),
+              {displayAmount(
+                group.reduce((sum, account) => {
+                  const amount = amounts.get(account.id) ?? 0;
+                  return sum + (signedAssets ? amount : Math.abs(amount));
+                }, 0),
               )}
             </strong>
           </div>
           {group.map((account) => (
             <div className="balance-account" key={account.id}>
               <span>{account.name}</span>
-              <b>{won(amounts.get(account.id) ?? 0)}</b>
+              <b>{displayAmount(amounts.get(account.id) ?? 0)}</b>
             </div>
           ))}
         </section>
