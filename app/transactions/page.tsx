@@ -8,6 +8,8 @@ import {
   ArrowUpRight,
   ArrowDownUp,
   Repeat2,
+  ImagePlus,
+  LoaderCircle,
   Search,
   Pencil,
   Trash2,
@@ -27,6 +29,7 @@ import {
   won,
 } from "@/lib/ledger";
 import { readSharedState, saveSharedState } from "@/lib/shared-state";
+import type { ImageTransactionDraft } from "@/lib/transaction-image";
 
 const makeCategoryOptions = (type: "income" | "expense") =>
   categories
@@ -79,12 +82,18 @@ function TransactionsContent() {
   const [recurringBatch, setRecurringBatch] = useState<
     RecurringExpenseTemplate[] | null
   >(null);
+  const [imageBatch, setImageBatch] = useState<ImageTransactionDraft[] | null>(
+    null,
+  );
+  const [imageAnalyzing, setImageAnalyzing] = useState(false);
+  const [imageError, setImageError] = useState("");
   const [customRecurring, setCustomRecurring] = useState<
     RecurringExpenseTemplate[]
   >([]);
   const [, setSettingsVersion] = useState(0);
   const recordsChangedBeforeLoad = useRef(false);
   const lastTouchRef = useRef<{ id: string; at: number } | null>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
   const [saveError, setSaveError] = useState("");
   const [formError, setFormError] = useState("");
   const isRepayment = type === "transfer" && isDebt(toAccountId);
@@ -173,6 +182,8 @@ function TransactionsContent() {
     setName("");
     setAmount("");
     setRecurringBatch(null);
+    setImageBatch(null);
+    setImageError("");
     setFormError("");
     if (searchParams.get("add") === "true") {
       router.replace("/transactions", { scroll: false });
@@ -209,6 +220,131 @@ function TransactionsContent() {
     }));
     const next = [...recordsToAdd, ...records];
     if (await persistRecords(next)) {
+      recordsToAdd.forEach((record) =>
+        includeRecordAccounts(selected, updateSelected, [
+          record.accountId,
+          record.toAccountId,
+        ]),
+      );
+      closeComposer();
+    }
+  }
+  async function analyzeImage(
+    image: File,
+    month: string,
+    defaultAccountId: string,
+  ) {
+    setImageAnalyzing(true);
+    setImageError("");
+    setImageBatch(null);
+    try {
+      const formData = new FormData();
+      formData.append("image", image);
+      formData.append(
+        "context",
+        JSON.stringify({
+          month,
+          defaultAccountId,
+          accounts: accounts.map((item) => ({
+            id: item.id,
+            name: item.name,
+            type: item.type,
+          })),
+          categories: categories.map((item) => ({
+            majorCategory: item.majorCategory,
+            minorCategory: item.minorCategory,
+            transactionType: item.transactionType,
+          })),
+        }),
+      );
+      const response = await fetch("/api/transactions/analyze-image", {
+        method: "POST",
+        body: formData,
+      });
+      const payload = (await response.json()) as {
+        transactions?: ImageTransactionDraft[];
+        error?: string;
+      };
+      if (!response.ok || !payload.transactions?.length) {
+        throw new Error(payload.error || "사진에서 거래를 찾지 못했습니다.");
+      }
+      setImageBatch(payload.transactions);
+    } catch (error) {
+      setImageError(
+        error instanceof Error
+          ? error.message
+          : "사진 분석 중 오류가 발생했습니다.",
+      );
+    } finally {
+      setImageAnalyzing(false);
+    }
+  }
+  function updateImageDraft(
+    id: string,
+    patch: Partial<ImageTransactionDraft>,
+  ) {
+    setImageBatch((rows) =>
+      rows?.map((row) => (row.id === id ? { ...row, ...patch } : row)) ?? null,
+    );
+  }
+  function changeImageDraftType(
+    draft: ImageTransactionDraft,
+    nextType: Transaction["type"],
+  ) {
+    if (nextType === "transfer") {
+      updateImageDraft(draft.id, {
+        type: nextType,
+        category: "이동",
+        minorCategory: "",
+        toAccountId:
+          draft.toAccountId ||
+          accounts.find((item) => item.id !== draft.accountId)?.id ||
+          "",
+      });
+      return;
+    }
+    const options = makeCategoryOptions(nextType);
+    const nextCategory = Object.keys(options)[0] ?? "";
+    updateImageDraft(draft.id, {
+      type: nextType,
+      category: nextCategory,
+      minorCategory: options[nextCategory]?.[0] ?? "",
+      toAccountId: "",
+    });
+  }
+  async function registerImageBatch(
+    selected: string[],
+    updateSelected: (next: string[]) => void,
+  ) {
+    if (!imageBatch?.length) return;
+    const invalid = imageBatch.some(
+      (item) =>
+        !item.name.trim() ||
+        !/^\d{4}-\d{2}-\d{2}$/.test(item.date) ||
+        !Number.isFinite(item.amount) ||
+        item.amount <= 0 ||
+        !accounts.some((account) => account.id === item.accountId) ||
+        (item.type === "transfer" &&
+          (!accounts.some((account) => account.id === item.toAccountId) ||
+            item.accountId === item.toAccountId)),
+    );
+    if (invalid) {
+      setImageError("내용, 금액, 통장 정보를 다시 확인해 주세요.");
+      return;
+    }
+    const recordsToAdd: Transaction[] = imageBatch.map((item) => ({
+      id: crypto.randomUUID(),
+      accountId: item.accountId,
+      toAccountId: item.type === "transfer" ? item.toAccountId : undefined,
+      name: item.name.trim(),
+      category: item.type === "transfer" ? "이동" : item.category,
+      minorCategory:
+        item.type === "transfer" ? undefined : item.minorCategory,
+      amount: item.type === "income" ? item.amount : -item.amount,
+      date: item.date.replaceAll("-", "."),
+      type: item.type,
+    }));
+    if (await persistRecords([...recordsToAdd, ...records])) {
       recordsToAdd.forEach((record) =>
         includeRecordAccounts(selected, updateSelected, [
           record.accountId,
@@ -561,6 +697,222 @@ function TransactionsContent() {
                       <Repeat2 size={17} />
                     </button>
                   </div>
+                  <input
+                    ref={imageInputRef}
+                    className="visually-hidden"
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp,image/gif"
+                    onChange={(event) => {
+                      const image = event.target.files?.[0];
+                      event.target.value = "";
+                      if (image) {
+                        void analyzeImage(
+                          image,
+                          month,
+                          accountId || selected[0] || "",
+                        );
+                      }
+                    }}
+                  />
+                  <button
+                    className="photo-import-trigger"
+                    type="button"
+                    disabled={imageAnalyzing || !accounts.length}
+                    onClick={() => imageInputRef.current?.click()}
+                  >
+                    {imageAnalyzing ? (
+                      <LoaderCircle className="spin" size={17} />
+                    ) : (
+                      <ImagePlus size={17} />
+                    )}
+                    {imageAnalyzing
+                      ? "사진에서 거래를 읽고 있어요"
+                      : "사진에서 거래 불러오기"}
+                  </button>
+                  {imageError && <p className="photo-import-error">{imageError}</p>}
+                  {imageBatch && (
+                    <section className="image-transaction-picker">
+                      <header>
+                        <div>
+                          <b>사진에서 {imageBatch.length}건을 찾았어요</b>
+                          <small>내용을 확인하고 잘못 읽은 항목은 수정하거나 제외하세요.</small>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setImageBatch(null);
+                            setImageError("");
+                          }}
+                        >
+                          모두 취소
+                        </button>
+                      </header>
+                      <div className="image-draft-list">
+                        {imageBatch.map((draft) => {
+                          const draftCategoryOptions = makeCategoryOptions(
+                            draft.type === "income" ? "income" : "expense",
+                          );
+                          return (
+                            <article className="image-draft" key={draft.id}>
+                              <div className="image-draft-head">
+                                <select
+                                  value={draft.type}
+                                  onChange={(event) =>
+                                    changeImageDraftType(
+                                      draft,
+                                      event.target.value as Transaction["type"],
+                                    )
+                                  }
+                                  aria-label={`${draft.name} 거래 유형`}
+                                >
+                                  <option value="expense">지출</option>
+                                  <option value="income">수입</option>
+                                  <option value="transfer">이동</option>
+                                </select>
+                                {draft.confidence < 0.75 && (
+                                  <span>확인 필요</span>
+                                )}
+                                <button
+                                  type="button"
+                                  aria-label={`${draft.name} 제외`}
+                                  onClick={() =>
+                                    setImageBatch(
+                                      (rows) =>
+                                        rows?.filter((row) => row.id !== draft.id) ??
+                                        null,
+                                    )
+                                  }
+                                >
+                                  <Trash2 size={15} />
+                                </button>
+                              </div>
+                              <div className="image-draft-main">
+                                <input
+                                  type="date"
+                                  value={draft.date}
+                                  onChange={(event) =>
+                                    updateImageDraft(draft.id, {
+                                      date: event.target.value,
+                                    })
+                                  }
+                                  aria-label={`${draft.name} 날짜`}
+                                />
+                                <input
+                                  value={draft.name}
+                                  lang="ko-KR"
+                                  onChange={(event) =>
+                                    updateImageDraft(draft.id, {
+                                      name: event.target.value,
+                                    })
+                                  }
+                                  aria-label="사진 거래 내용"
+                                />
+                                <input
+                                  type="text"
+                                  inputMode="numeric"
+                                  value={formatNumber(draft.amount)}
+                                  onChange={(event) =>
+                                    updateImageDraft(draft.id, {
+                                      amount: Number(
+                                        parseNumberInput(event.target.value),
+                                      ),
+                                    })
+                                  }
+                                  aria-label={`${draft.name} 금액`}
+                                />
+                              </div>
+                              <div className="image-draft-meta">
+                                <select
+                                  value={draft.accountId}
+                                  onChange={(event) =>
+                                    updateImageDraft(draft.id, {
+                                      accountId: event.target.value,
+                                    })
+                                  }
+                                  aria-label={`${draft.name} ${draft.type === "income" ? "입금" : "출금"} 통장`}
+                                >
+                                  {accounts.map((item) => (
+                                    <option key={item.id} value={item.id}>
+                                      {item.name}
+                                    </option>
+                                  ))}
+                                </select>
+                                {draft.type === "transfer" ? (
+                                  <select
+                                    value={draft.toAccountId}
+                                    onChange={(event) =>
+                                      updateImageDraft(draft.id, {
+                                        toAccountId: event.target.value,
+                                      })
+                                    }
+                                    aria-label={`${draft.name} 입금 통장`}
+                                  >
+                                    {accounts
+                                      .filter((item) => item.id !== draft.accountId)
+                                      .map((item) => (
+                                        <option key={item.id} value={item.id}>
+                                          {item.name}
+                                        </option>
+                                      ))}
+                                  </select>
+                                ) : (
+                                  <>
+                                    <select
+                                      value={draft.category}
+                                      onChange={(event) => {
+                                        const nextCategory = event.target.value;
+                                        updateImageDraft(draft.id, {
+                                          category: nextCategory,
+                                          minorCategory:
+                                            draftCategoryOptions[nextCategory]?.[0] ??
+                                            "",
+                                        });
+                                      }}
+                                      aria-label={`${draft.name} 대분류`}
+                                    >
+                                      {Object.keys(draftCategoryOptions).map(
+                                        (item) => (
+                                          <option key={item}>{item}</option>
+                                        ),
+                                      )}
+                                    </select>
+                                    <select
+                                      value={draft.minorCategory}
+                                      onChange={(event) =>
+                                        updateImageDraft(draft.id, {
+                                          minorCategory: event.target.value,
+                                        })
+                                      }
+                                      aria-label={`${draft.name} 소분류`}
+                                    >
+                                      {(
+                                        draftCategoryOptions[draft.category] ?? []
+                                      ).map((item) => (
+                                        <option key={item}>{item}</option>
+                                      ))}
+                                    </select>
+                                  </>
+                                )}
+                              </div>
+                            </article>
+                          );
+                        })}
+                      </div>
+                      <button
+                        className="register-image-batch"
+                        type="button"
+                        disabled={!imageBatch.length}
+                        onClick={() =>
+                          void registerImageBatch(selected, updateSelected)
+                        }
+                      >
+                        확인한 {imageBatch.length}건 일괄 등록
+                      </button>
+                      <small className="photo-privacy-note">
+                        사진은 거래 분석에만 사용되며 이 가계부에 저장되지 않습니다.
+                      </small>
+                    </section>
+                  )}
                   {recurringBatch && (
                     <section className="recurring-picker">
                       <div className="recurring-batch">

@@ -41,13 +41,6 @@ export default function OverviewPage() {
         const inMonth = records.filter((item) =>
           item.date.startsWith(month.replace("-", ".")),
         );
-        const filtered = selected.length
-          ? inMonth.filter(
-              (item) =>
-                selected.includes(item.accountId) ||
-                (item.toAccountId && selected.includes(item.toAccountId)),
-            )
-          : inMonth;
         const income = inMonth
           .filter((item) => item.type === "income")
           .reduce((sum, item) => sum + item.amount, 0);
@@ -180,39 +173,6 @@ export default function OverviewPage() {
                   </small>
                 )}
               </article>
-            </section>
-            <section className="overview-recent">
-              <header>
-                <h2>최근 거래</h2>
-                <a href="/transactions">전체 보기 →</a>
-              </header>
-              {filtered.slice(0, 5).map((item) => (
-                <article key={item.id}>
-                  <i>
-                    {item.type === "income" ? (
-                      <ArrowUpRight size={16} />
-                    ) : (
-                      <ArrowDownRight size={16} />
-                    )}
-                  </i>
-                  <div>
-                    <b>{item.name}</b>
-                    <small>
-                      {item.category} ·{" "}
-                      {
-                        accounts.find(
-                          (account) => account.id === item.accountId,
-                        )?.name
-                      }
-                    </small>
-                  </div>
-                  <time>{item.date}</time>
-                  <strong className={item.type === "income" ? "up" : ""}>
-                    {item.type === "income" ? "+" : "−"}
-                    {won(item.amount)}
-                  </strong>
-                </article>
-              ))}
             </section>
           </>
         );
