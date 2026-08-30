@@ -677,6 +677,11 @@ function TransactionsContent() {
                   <label>
                     내용
                     <input
+                      lang="ko-KR"
+                      inputMode="text"
+                      autoComplete="off"
+                      autoCapitalize="none"
+                      spellCheck={false}
                       value={name}
                       onChange={(event) => setName(event.target.value)}
                       placeholder={type === "transfer" ? "예: 카드 결제" : "예: 점심 식사"}

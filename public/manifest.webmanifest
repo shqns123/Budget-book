@@ -2,6 +2,8 @@
   "name": "잔잔한 가계부",
   "short_name": "잔잔한 가계부",
   "description": "통장별 흐름을 조용히 정리하는 개인 가계부",
+  "lang": "ko-KR",
+  "dir": "ltr",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
