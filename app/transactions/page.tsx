@@ -229,8 +229,8 @@ function TransactionsContent() {
       closeComposer();
     }
   }
-  async function analyzeImage(
-    image: File,
+  async function analyzeImages(
+    images: File[],
     month: string,
     defaultAccountId: string,
   ) {
@@ -239,7 +239,7 @@ function TransactionsContent() {
     setImageBatch(null);
     try {
       const formData = new FormData();
-      formData.append("image", image);
+      images.forEach((image) => formData.append("images", image));
       formData.append(
         "context",
         JSON.stringify({
@@ -701,13 +701,14 @@ function TransactionsContent() {
                     ref={imageInputRef}
                     className="visually-hidden"
                     type="file"
+                    multiple
                     accept="image/jpeg,image/png,image/webp,image/gif"
                     onChange={(event) => {
-                      const image = event.target.files?.[0];
+                      const images = Array.from(event.target.files ?? []);
                       event.target.value = "";
-                      if (image) {
-                        void analyzeImage(
-                          image,
+                      if (images.length) {
+                        void analyzeImages(
+                          images,
                           month,
                           accountId || selected[0] || "",
                         );
@@ -727,7 +728,7 @@ function TransactionsContent() {
                     )}
                     {imageAnalyzing
                       ? "사진에서 거래를 읽고 있어요"
-                      : "사진에서 거래 불러오기"}
+                      : "사진에서 거래 불러오기 (최대 5장)"}
                   </button>
                   {imageError && <p className="photo-import-error">{imageError}</p>}
                   {imageBatch && (

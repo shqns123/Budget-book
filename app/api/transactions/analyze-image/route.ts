@@ -5,6 +5,8 @@ export const runtime = "nodejs";
 
 const DEFAULT_MODEL = "openai/gpt-5.4-mini";
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
+const MAX_IMAGE_COUNT = 5;
+const MAX_TOTAL_IMAGE_BYTES = 20 * 1024 * 1024;
 const ALLOWED_IMAGE_TYPES = new Set([
   "image/jpeg",
   "image/png",
@@ -158,29 +160,48 @@ export async function POST(request: Request) {
   } catch {
     return NextResponse.json({ error: "사진을 읽을 수 없습니다." }, { status: 400 });
   }
-  const image = formData.get("image");
+  const images = formData
+    .getAll("images")
+    .filter((value): value is File => value instanceof File);
   const context = parseContext(formData.get("context"));
-  if (!(image instanceof File) || !context) {
+  if (!images.length || !context) {
     return NextResponse.json({ error: "사진 또는 분석 정보가 올바르지 않습니다." }, { status: 400 });
   }
-  if (!ALLOWED_IMAGE_TYPES.has(image.type)) {
+  if (images.length > MAX_IMAGE_COUNT) {
+    return NextResponse.json(
+      { error: `사진은 한 번에 최대 ${MAX_IMAGE_COUNT}장까지 선택할 수 있습니다.` },
+      { status: 400 },
+    );
+  }
+  if (images.some((image) => !ALLOWED_IMAGE_TYPES.has(image.type))) {
     return NextResponse.json(
       { error: "JPG, PNG, WEBP, GIF 사진만 사용할 수 있습니다." },
       { status: 415 },
     );
   }
-  if (!image.size || image.size > MAX_IMAGE_BYTES) {
+  const totalImageBytes = images.reduce((total, image) => total + image.size, 0);
+  if (images.some((image) => !image.size || image.size > MAX_IMAGE_BYTES)) {
     return NextResponse.json(
-      { error: "사진은 8MB 이하만 사용할 수 있습니다." },
+      { error: "각 사진은 8MB 이하만 사용할 수 있습니다." },
       { status: 413 },
     );
   }
-
-  const base64 = Buffer.from(await image.arrayBuffer()).toString("base64");
-  const dataUrl = `data:${image.type};base64,${base64}`;
+  if (totalImageBytes > MAX_TOTAL_IMAGE_BYTES) {
+    return NextResponse.json(
+      { error: "선택한 사진의 합계 용량은 20MB 이하로 맞춰 주세요." },
+      { status: 413 },
+    );
+  }
+  const dataUrls = await Promise.all(
+    images.map(async (image) => {
+      const base64 = Buffer.from(await image.arrayBuffer()).toString("base64");
+      return `data:${image.type};base64,${base64}`;
+    }),
+  );
   const prompt = [
-    "이 이미지는 사용자가 직접 제공한 은행/카드 거래 화면 또는 영수증이다.",
-    "화면에 실제로 보이는 거래만 위에서 아래 순서대로 추출하라. 잔액, 합계, 광고 문구는 거래로 만들지 마라.",
+    `사용자가 직접 제공한 은행/카드 거래 화면 또는 영수증 사진 ${images.length}장이다. 사진 순서는 선택 순서다.`,
+    "모든 사진에서 실제로 보이는 거래만 사진 순서와 각 사진의 위에서 아래 순서대로 추출하라. 잔액, 합계, 광고 문구는 거래로 만들지 마라.",
+    "같은 거래가 연속된 화면에 중복해서 보이면 한 번만 추출하라.",
     `기준 연월은 ${context.month}이다. 연도가 생략된 날짜는 이 연도를 사용하고, 월/일이 생략된 영수증은 기준 연월을 사용하라.`,
     "출금 또는 음수 금액은 expense, 입금 또는 양수 금액은 income이다.",
     "'자동이체'라는 문구만으로 transfer로 분류하지 마라. 제공된 두 계좌 사이의 이동이 명확할 때만 transfer를 사용하라.",
@@ -213,7 +234,10 @@ export async function POST(request: Request) {
             role: "user",
             content: [
               { type: "text", text: prompt },
-              { type: "image_url", image_url: { url: dataUrl } },
+              ...dataUrls.map((url) => ({
+                type: "image_url" as const,
+                image_url: { url },
+              })),
             ],
           },
         ],
