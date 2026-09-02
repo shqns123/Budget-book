@@ -72,6 +72,11 @@ export function calculateAccountBalances(
   records: Transaction[],
   cutoff?: string,
 ) {
+  const normalizeDate = (value: string) => {
+    const [year, month, day] = value.replaceAll(".", "-").split("-");
+    if (!year || !month || !day) return value;
+    return `${year.padStart(4, "0")}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
+  };
   const amounts = new Map(
     details.map((account) => [account.id, account.openingBalance]),
   );
@@ -88,7 +93,7 @@ export function calculateAccountBalances(
   records
     .filter(
       (item) =>
-        !cutoff || item.date.replaceAll(".", "-") <= cutoff,
+        !cutoff || normalizeDate(item.date) <= cutoff,
     )
     .forEach((item) => {
       if (item.type === "income") applyChange(item.accountId, item.amount);

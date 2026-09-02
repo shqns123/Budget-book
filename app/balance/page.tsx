@@ -28,7 +28,9 @@ export default function BalancePage() {
   return (
     <AppShell>
       {({ month }) => {
-        const cutoff = `${month}-31`;
+        const [year, monthNumber] = month.split("-").map(Number);
+        const lastDay = new Date(year, monthNumber, 0).getDate();
+        const cutoff = `${month}-${String(lastDay).padStart(2, "0")}`;
         const amounts = calculateAccountBalances(
           accountDetails,
           records,

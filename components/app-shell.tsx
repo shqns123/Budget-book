@@ -121,7 +121,9 @@ export function AppShell({
         : `통장 ${selected.length}개 선택`;
   const isAccountScoped = pathname !== "/balance";
   const showHeaderControls =
-    pathname === "/transactions" || pathname === "/reports";
+    pathname === "/transactions" ||
+    pathname === "/reports" ||
+    pathname === "/balance";
   const updateSelected = (next: string[]) => {
     setSelected(next);
   };
