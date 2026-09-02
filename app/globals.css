@@ -2483,6 +2483,88 @@ a {
   color: var(--ink);
   font-size: 12px;
 }
+
+.ledger-filter {
+  position: relative;
+}
+
+.record-filter {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 9px 11px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--fog);
+  color: var(--ink);
+  font-size: 12px;
+}
+
+.record-filter.active {
+  background: var(--peach);
+  color: var(--sienna);
+}
+
+.record-filter i {
+  display: grid;
+  min-width: 15px;
+  height: 15px;
+  place-items: center;
+  border-radius: 999px;
+  background: var(--sienna);
+  color: #fff;
+  font-size: 9px;
+  font-style: normal;
+}
+
+.ledger-filter-menu {
+  position: absolute;
+  z-index: 15;
+  top: calc(100% + 7px);
+  right: 0;
+  display: grid;
+  gap: 10px;
+  width: min(290px, calc(100vw - 40px));
+  padding: 14px;
+  border: 1px solid #e6ddd8;
+  border-radius: 15px;
+  background: #fff;
+  box-shadow: 0 14px 35px #17191c18;
+}
+
+.ledger-filter-menu header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.ledger-filter-menu header b {
+  font-size: 13px;
+}
+
+.ledger-filter-menu header button {
+  border: 0;
+  background: transparent;
+  color: var(--sienna);
+  font-size: 11px;
+}
+
+.ledger-filter-menu label {
+  display: grid;
+  gap: 5px;
+  color: var(--slate);
+  font-size: 10px;
+}
+
+.ledger-filter-menu select {
+  width: 100%;
+  padding: 9px 10px;
+  border: 1px solid #e3e3e5;
+  border-radius: 9px;
+  background: var(--fog);
+  color: var(--ink);
+  font-size: 12px;
+}
 .delete-record {
   display: flex;
   align-items: center;

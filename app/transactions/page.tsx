@@ -10,6 +10,7 @@ import {
   Repeat2,
   ImagePlus,
   LoaderCircle,
+  ListFilter,
   Search,
   Pencil,
   Trash2,
@@ -30,6 +31,10 @@ import {
 } from "@/lib/ledger";
 import { readSharedState, saveSharedState } from "@/lib/shared-state";
 import type { ImageTransactionDraft } from "@/lib/transaction-image";
+
+type TransactionTypeFilter = "all" | Transaction["type"];
+
+const TRANSACTION_SORT_STORAGE_KEY = "ledger-transaction-sort";
 
 const makeCategoryOptions = (type: "income" | "expense") =>
   categories
@@ -79,6 +84,11 @@ function TransactionsContent() {
   const [minorCategory, setMinorCategory] = useState("식료품");
   const [query, setQuery] = useState("");
   const [sortedByDate, setSortedByDate] = useState(false);
+  const [sortPreferenceLoaded, setSortPreferenceLoaded] = useState(false);
+  const [showFilters, setShowFilters] = useState(false);
+  const [typeFilter, setTypeFilter] = useState<TransactionTypeFilter>("all");
+  const [fromAccountFilter, setFromAccountFilter] = useState("");
+  const [toAccountFilter, setToAccountFilter] = useState("");
   const [recurringBatch, setRecurringBatch] = useState<
     RecurringExpenseTemplate[] | null
   >(null);
@@ -94,6 +104,7 @@ function TransactionsContent() {
   const recordsChangedBeforeLoad = useRef(false);
   const lastTouchRef = useRef<{ id: string; at: number } | null>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
+  const filterRef = useRef<HTMLDivElement>(null);
   const [saveError, setSaveError] = useState("");
   const [formError, setFormError] = useState("");
   const isRepayment = type === "transfer" && isDebt(toAccountId);
@@ -111,6 +122,28 @@ function TransactionsContent() {
       setComposer(true);
     }
   }, [searchParams]);
+  useEffect(() => {
+    setSortedByDate(
+      window.localStorage.getItem(TRANSACTION_SORT_STORAGE_KEY) === "date-desc",
+    );
+    setSortPreferenceLoaded(true);
+  }, []);
+  useEffect(() => {
+    if (!sortPreferenceLoaded) return;
+    window.localStorage.setItem(
+      TRANSACTION_SORT_STORAGE_KEY,
+      sortedByDate ? "date-desc" : "created",
+    );
+  }, [sortPreferenceLoaded, sortedByDate]);
+  useEffect(() => {
+    const closeFilters = (event: MouseEvent) => {
+      if (!filterRef.current?.contains(event.target as Node)) {
+        setShowFilters(false);
+      }
+    };
+    document.addEventListener("mousedown", closeFilters);
+    return () => document.removeEventListener("mousedown", closeFilters);
+  }, []);
   useEffect(() => {
     void Promise.all([
       readSharedState("settings", {
@@ -451,13 +484,21 @@ function TransactionsContent() {
   return (
     <AppShell>
       {({ selected, month, updateSelected }) => {
+        const activeFilterCount = [
+          typeFilter !== "all",
+          Boolean(fromAccountFilter),
+          Boolean(toAccountFilter),
+        ].filter(Boolean).length;
         const visible = records.filter(
           (item) =>
             item.date.startsWith(month.replace("-", ".")) &&
             (!selected.length ||
               selected.includes(item.accountId) ||
               (item.toAccountId && selected.includes(item.toAccountId))) &&
-            item.name.includes(query),
+            item.name.includes(query) &&
+            (typeFilter === "all" || item.type === typeFilter) &&
+            (!fromAccountFilter || item.accountId === fromAccountFilter) &&
+            (!toAccountFilter || item.toAccountId === toAccountFilter),
         );
         const sortedVisible = sortedByDate
           ? [...visible].sort((left, right) =>
@@ -485,6 +526,83 @@ function TransactionsContent() {
                     onChange={(event) => setQuery(event.target.value)}
                     placeholder="내역 검색"
                   />
+                </div>
+                <div className="ledger-filter" ref={filterRef}>
+                  <button
+                    type="button"
+                    className={showFilters || activeFilterCount ? "record-filter active" : "record-filter"}
+                    onClick={() => setShowFilters((open) => !open)}
+                    aria-expanded={showFilters}
+                    aria-label="거래 내역 필터"
+                  >
+                    <ListFilter size={15} /> 필터
+                    {activeFilterCount > 0 && <i>{activeFilterCount}</i>}
+                  </button>
+                  {showFilters && (
+                    <div className="ledger-filter-menu">
+                      <header>
+                        <b>필터</b>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setTypeFilter("all");
+                            setFromAccountFilter("");
+                            setToAccountFilter("");
+                          }}
+                        >
+                          초기화
+                        </button>
+                      </header>
+                      <label>
+                        거래 유형
+                        <select
+                          value={typeFilter}
+                          onChange={(event) =>
+                            setTypeFilter(
+                              event.target.value as TransactionTypeFilter,
+                            )
+                          }
+                        >
+                          <option value="all">전체</option>
+                          <option value="expense">지출</option>
+                          <option value="income">수입</option>
+                          <option value="transfer">이동</option>
+                        </select>
+                      </label>
+                      <label>
+                        출금 / 기준 통장 (From)
+                        <select
+                          value={fromAccountFilter}
+                          onChange={(event) =>
+                            setFromAccountFilter(event.target.value)
+                          }
+                        >
+                          <option value="">전체 통장</option>
+                          {accounts.map((account) => (
+                            <option key={account.id} value={account.id}>
+                              {account.name}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label>
+                        입금 통장 (To)
+                        <select
+                          value={toAccountFilter}
+                          onChange={(event) =>
+                            setToAccountFilter(event.target.value)
+                          }
+                        >
+                          <option value="">전체 통장</option>
+                          {accounts.map((account) => (
+                            <option key={account.id} value={account.id}>
+                              {account.name}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    </div>
+                  )}
                 </div>
                 <button
                   type="button"
