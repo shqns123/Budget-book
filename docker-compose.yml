@@ -5,15 +5,13 @@ services:
       network: host
     container_name: budget-book
     restart: unless-stopped
-    ports:
-      - "3002:3000"
+    network_mode: host
     env_file:
       - .env
     environment:
+      PORT: 3002
       TZ: Asia/Seoul
       NODE_ENV: production
       SQLITE_DATABASE_PATH: /app/data/ledger.db
-    dns:
-      - 192.168.0.1
     volumes:
       - ./data:/app/data
