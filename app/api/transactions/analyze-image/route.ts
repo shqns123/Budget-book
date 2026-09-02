@@ -27,8 +27,12 @@ type AnalysisContext = {
   categories: ContextCategory[];
 };
 
+type OpenRouterMessageContent =
+  | string
+  | Array<{ type?: string; text?: string; content?: string }>;
+
 type OpenRouterResponse = {
-  choices?: Array<{ message?: { content?: string } }>;
+  choices?: Array<{ message?: { content?: OpenRouterMessageContent } }>;
   error?: { message?: string };
 };
 
@@ -135,6 +139,32 @@ function normalizeAnalysis(
     .filter((row) => row.name && row.amount > 0 && accountIds.has(row.accountId));
 
   return { transactions };
+}
+
+function getMessageText(content: OpenRouterMessageContent | undefined) {
+  if (typeof content === "string") return content.trim();
+  if (Array.isArray(content)) {
+    return content
+      .map((part) => part.text ?? part.content ?? "")
+      .join("")
+      .trim();
+  }
+  return "";
+}
+
+function parseAnalysisContent(content: string) {
+  try {
+    return JSON.parse(content) as unknown;
+  } catch {
+    const fencedJson = content.match(/```(?:json)?\s*([\s\S]*?)\s*```/i)?.[1];
+    if (fencedJson) return JSON.parse(fencedJson);
+    const objectStart = content.indexOf("{");
+    const objectEnd = content.lastIndexOf("}");
+    if (objectStart >= 0 && objectEnd > objectStart) {
+      return JSON.parse(content.slice(objectStart, objectEnd + 1));
+    }
+    throw new Error("OpenRouter returned non-JSON content");
+  }
 }
 
 export async function POST(request: Request) {
@@ -299,9 +329,9 @@ export async function POST(request: Request) {
         { status: response.status === 429 ? 429 : 502 },
       );
     }
-    const content = payload.choices?.[0]?.message?.content;
+    const content = getMessageText(payload.choices?.[0]?.message?.content);
     if (!content) throw new Error("OpenRouter returned no content");
-    const analysis = normalizeAnalysis(JSON.parse(content), context);
+    const analysis = normalizeAnalysis(parseAnalysisContent(content), context);
     if (!analysis.transactions.length) {
       return NextResponse.json(
         { error: "사진에서 등록할 거래를 찾지 못했습니다." },
@@ -316,7 +346,7 @@ export async function POST(request: Request) {
         error:
           error instanceof Error && error.name === "AbortError"
             ? "사진 분석 시간이 초과되었습니다. 다시 시도해 주세요."
-            : "사진 분석 결과를 처리하지 못했습니다.",
+            : "사진 분석 결과 형식이 올바르지 않습니다. 사진 수를 줄여 다시 시도해 주세요.",
       },
       { status: 502 },
     );

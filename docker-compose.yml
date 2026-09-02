@@ -13,5 +13,8 @@ services:
       TZ: Asia/Seoul
       NODE_ENV: production
       SQLITE_DATABASE_PATH: /app/data/ledger.db
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
     volumes:
       - ./data:/app/data
