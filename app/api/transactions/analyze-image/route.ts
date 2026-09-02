@@ -27,9 +27,15 @@ type AnalysisContext = {
   categories: ContextCategory[];
 };
 
+type OpenRouterContentPart = {
+  type?: string;
+  text?: string;
+  content?: string;
+};
 type OpenRouterMessageContent =
   | string
-  | Array<{ type?: string; text?: string; content?: string }>;
+  | OpenRouterContentPart
+  | OpenRouterContentPart[];
 
 type OpenRouterResponse = {
   choices?: Array<{ message?: { content?: OpenRouterMessageContent } }>;
@@ -143,6 +149,9 @@ function normalizeAnalysis(
 
 function getMessageText(content: OpenRouterMessageContent | undefined) {
   if (typeof content === "string") return content.trim();
+  if (content && !Array.isArray(content)) {
+    return (content.text ?? content.content ?? "").trim();
+  }
   if (Array.isArray(content)) {
     return content
       .map((part) => part.text ?? part.content ?? "")
