@@ -3404,4 +3404,33 @@ a {
     width: min(142px, 36vw);
     padding: 0 8px;
   }
+
+  .record-filter {
+    min-height: 44px;
+  }
+
+  .ledger-filter-menu {
+    position: fixed;
+    z-index: 40;
+    top: auto;
+    right: 12px;
+    bottom: calc(92px + env(safe-area-inset-bottom));
+    left: 12px;
+    width: auto;
+    max-height: calc(100dvh - 128px);
+    padding: 18px;
+    overflow-y: auto;
+    border-radius: 20px;
+    box-shadow: 0 10px 32px rgba(23, 25, 28, 0.16);
+  }
+
+  .ledger-filter-menu label {
+    gap: 7px;
+    font-size: 12px;
+  }
+
+  .ledger-filter-menu select {
+    min-height: 46px;
+    font-size: 16px;
+  }
 }
