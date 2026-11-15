@@ -8,8 +8,7 @@ export default function MoreScreen() {
   return (
     <Screen title="전체">
       <Section title="가계부">
-        <Row first icon="balance" title="잔고" meta="월말 기준 자산과 부채" chevron onPress={() => router.push("/balance")} />
-        <Row icon="piggy" title="저축 내역" meta="저축 계획과 기록" chevron onPress={() => router.push("/savings")} />
+        <Row first icon="piggy" title="저축 내역" meta="저축 계획과 기록" chevron onPress={() => router.push("/savings")} />
         <Row icon="settings" title="가계부 설정" meta="통장 · 분류 · 월 예산 · 반복 지출" chevron onPress={() => router.push("/settings")} />
       </Section>
       <Section title="연결">

@@ -1,6 +1,6 @@
 import { shortDate } from "@/lib/dates";
 import { accountName, typeLabel, won, type Account, type Transaction } from "@/lib/ledger";
-import { Row } from "@/components/ui";
+import { Row, Tag } from "@/components/ui";
 
 export function amountText(item: Transaction) {
   const sign = item.type === "income" ? "+" : item.type === "transfer" ? "↔ " : "−";
@@ -22,15 +22,19 @@ export function TransactionRow({
   accounts,
   first,
   onPress,
+  linked,
 }: {
   item: Transaction;
   accounts: Account[];
   first?: boolean;
   onPress?: () => void;
+  /** The transfer recorded together with this expense ("자금 이동 같이 기록"). */
+  linked?: Transaction;
 }) {
   const amount = amountText(item);
   return (
     <Row
+      dense
       first={first}
       onPress={onPress}
       icon={item.type === "transfer" ? "transfer" : item.type === "income" ? "income" : "expense"}
@@ -40,7 +44,8 @@ export function TransactionRow({
       trailing={amount}
       trailingColor={item.type === "income" ? "income" : item.type === "transfer" ? "text2" : "text"}
       trailingMeta={shortDate(item.date)}
-      accessibilityLabel={`${item.name}, ${typeLabel(item.type)} ${won(item.amount)}, ${shortDate(item.date)}, ${categoryText(item)}, ${accountText(accounts, item)}`}
+      badge={linked ? <Tag label={`자금 이동 · ${accountText(accounts, linked)}`} tone="accent" /> : undefined}
+      accessibilityLabel={`${item.name}, ${typeLabel(item.type)} ${won(item.amount)}, ${shortDate(item.date)}, ${categoryText(item)}, ${accountText(accounts, item)}${linked ? `, 자금 이동 함께 기록됨: ${accountText(accounts, linked)}` : ""}`}
     />
   );
 }

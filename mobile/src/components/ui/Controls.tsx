@@ -1,11 +1,12 @@
-import type { ReactNode } from "react";
-import { Pressable, StyleSheet, Switch, View, type ViewStyle } from "react-native";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { Animated, Pressable, StyleSheet, Switch, View, type ViewStyle } from "react-native";
+import { useReducedMotion } from "@/lib/motion";
 import { useTheme } from "@/theme/theme";
-import { opacity, radius, space } from "@/theme/tokens";
+import { motion, opacity, radius, space } from "@/theme/tokens";
 import { Icon, type IconName } from "./Icon";
 import { Text } from "./Text";
 
-/** Segmented control: subtle track, peach selected slot. */
+/** Segmented control: subtle track, peach selected slot that slides to the tapped option. */
 export function Segmented<T extends string>({
   value,
   options,
@@ -20,12 +21,43 @@ export function Segmented<T extends string>({
   accessibilityLabel?: string;
 }) {
   const { c } = useTheme();
+  const reduceMotion = useReducedMotion();
+  const [trackWidth, setTrackWidth] = useState(0);
+  const [x] = useState(() => new Animated.Value(0));
+  const placed = useRef(false);
+  const index = Math.max(0, options.findIndex((o) => o.value === value));
+  const slotWidth = trackWidth
+    ? (trackWidth - SEGMENT_PAD * 2 - SEGMENT_GAP * (options.length - 1)) / options.length
+    : 0;
+  const target = index * (slotWidth + SEGMENT_GAP);
+
+  useEffect(() => {
+    if (!slotWidth) return;
+    // Jump into place the first time; slide after that.
+    if (!placed.current || reduceMotion) {
+      placed.current = true;
+      x.setValue(target);
+      return;
+    }
+    Animated.spring(x, { toValue: target, ...motion.spring, useNativeDriver: true }).start();
+  }, [target, slotWidth, reduceMotion, x]);
+
   return (
     <View
       accessibilityRole="tablist"
       accessibilityLabel={accessibilityLabel}
+      onLayout={(e) => setTrackWidth(e.nativeEvent.layout.width)}
       style={[styles.track, { backgroundColor: c.segmentTrack }, style]}
     >
+      {slotWidth > 0 && (
+        <Animated.View
+          pointerEvents="none"
+          style={[
+            styles.thumb,
+            { width: slotWidth, backgroundColor: c.primaryContainer, transform: [{ translateX: x }] },
+          ]}
+        />
+      )}
       {options.map((option) => {
         const selected = option.value === value;
         return (
@@ -34,7 +66,7 @@ export function Segmented<T extends string>({
             onPress={() => onChange(option.value)}
             accessibilityRole="tab"
             accessibilityState={{ selected }}
-            style={[styles.slot, selected && { backgroundColor: c.primaryContainer }]}
+            style={[styles.slot, selected && !slotWidth && { backgroundColor: c.primaryContainer }]}
           >
             <Text
               variant="subhead"
@@ -61,7 +93,8 @@ export function Chip({
   count,
   accessibilityLabel,
 }: {
-  label: string;
+  /** Leave out for an icon-only chip (then give accessibilityLabel). */
+  label?: string;
   selected?: boolean;
   onPress?: () => void;
   icon?: IconName;
@@ -80,15 +113,18 @@ export function Chip({
       accessibilityState={{ selected }}
       style={({ pressed }) => [
         styles.chip,
+        !label && styles.chipIconOnly,
         {
           backgroundColor: selected ? c.primaryContainer : pressed ? c.fill : c.card,
         },
       ]}
     >
-      {icon && <Icon name={icon} size={16} color={fg} />}
-      <Text variant="subhead" weight="600" style={{ color: fg }} numberOfLines={1}>
-        {label}
-      </Text>
+      {icon && <Icon name={icon} size={label ? 16 : 18} color={fg} />}
+      {label ? (
+        <Text variant="subhead" weight="600" style={{ color: fg }} numberOfLines={1}>
+          {label}
+        </Text>
+      ) : null}
       {count ? (
         <View style={[styles.count, { backgroundColor: c.primary }]}>
           <Text variant="caption" style={{ color: c.onPrimary, fontSize: 11, lineHeight: 14 }}>
@@ -246,12 +282,22 @@ export function Tag({ label, tone = "neutral" }: { label: string; tone?: "neutra
 
 export const pressedOpacity = opacity.pressed;
 
+const SEGMENT_PAD = 4;
+const SEGMENT_GAP = 4;
+
 const styles = StyleSheet.create({
   track: {
     flexDirection: "row",
     borderRadius: radius.control,
-    padding: 4,
-    gap: 4,
+    padding: SEGMENT_PAD,
+    gap: SEGMENT_GAP,
+  },
+  thumb: {
+    position: "absolute",
+    top: SEGMENT_PAD,
+    bottom: SEGMENT_PAD,
+    left: SEGMENT_PAD,
+    borderRadius: radius.control - SEGMENT_PAD,
   },
   slot: {
     flex: 1,
@@ -269,6 +315,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 6,
   },
+  chipIconOnly: { minWidth: 36, paddingHorizontal: 9, justifyContent: "center" },
   chipRow: { flexDirection: "row", gap: space.sm, flexWrap: "wrap", alignItems: "center" },
   count: {
     minWidth: 18,

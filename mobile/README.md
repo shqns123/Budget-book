@@ -3,7 +3,8 @@
 웹앱과 같은 NAS 서버(SQLite)를 쓰는 Android/iOS 앱입니다. Expo SDK 58 · React Native 0.88 · Expo Router.
 
 - **디자인**: 공용 모바일 디자인 시스템의 구조(회색 캔버스, 흰 섹션 카드, 플로팅 탭 바, 시트, 모서리 규칙 14/20/28)를 따르고, 대표 색은 웹앱의 잉크 `#17191c`(주요 버튼) · 피치 `#fbe1d1` / 시에나 `#5d2a1a`(선택 · 강조)입니다. 모든 값은 `src/theme/tokens.ts`에 있으며 화면에서는 `useTheme().c`로만 씁니다. 다크 모드를 지원합니다.
-- **화면**: 개요 · 거래 내역(검색/필터/정렬, 추가·수정·삭제, 사진에서 거래 불러오기, 반복 항목 일괄 등록) · 보고서(월간/연간) · 잔고 · 저축 내역 · 가계부 설정(계좌, 분류, 월 예산, 반복 지출)
+- **화면**: 보고서(첫 탭, 월간/연간) · 거래 내역(검색/필터/정렬, 추가·수정·삭제, 사진에서 거래 불러오기, 반복 항목 일괄 등록, 자금 이동 같이 기록) · 잔고 · 저축 내역 · 가계부 설정(계좌, 분류, 월 예산, 반복 지출)
+- **글꼴**: Plus Jakarta Sans(영문·숫자, 앱 시작 때 불러옴). 한글은 시스템 한국어 글꼴로 표시돼요.
 
 ## 서버 준비 (한 번)
 
@@ -17,26 +18,44 @@ docker compose up -d --build
 
 | 어디서 | 넣는 곳 | 로그인 화면 |
 |---|---|---|
-| 개발 (Expo Go) | `mobile/.env.local`의 `EXPO_PUBLIC_API_URL` (`.env.example` 복사) | 서버 주소 칸이 미리 채워짐 (바꿀 수 있음) |
+| 개발 (개발용 앱·Expo Go) | `mobile/.env.local`의 `EXPO_PUBLIC_API_URL` (`.env.example` 복사) | 서버 주소 칸이 미리 채워짐 (바꿀 수 있음) |
 | APK · EAS 빌드 | `eas.json`의 `build.preview.env`, `build.production.env`의 `EXPO_PUBLIC_API_URL` | 서버 주소 칸 없음, 아이디·비밀번호만 |
 
 - `.env.local`을 바꾼 뒤에는 `npx expo start --clear`로 다시 시작해야 반영됩니다.
 - 개발에서는 한 번 로그인한 주소가 기기에 저장돼 그 값이 우선합니다. 빌드된 앱은 항상 넣어 둔 주소를 씁니다.
 - 주소는 https여야 합니다(릴리스 앱은 http를 막습니다). 로컬 APK 빌드 스크립트가 `eas.json`의 preview env를 그대로 씁니다.
 
-## 개발 실행 (Expo Go)
+## 개발 실행 (코드를 고치면 폰에 바로 반영)
 
-이 앱은 Expo Go에 들어 있는 모듈만 써서, 네이티브 빌드 없이 Expo Go로 바로 테스트할 수 있습니다.
+폰에 설치하는 앱이 두 가지입니다. 둘 다 같은 폰에 함께 설치됩니다.
+
+| 앱 | 패키지 | 코드 | 만드는 법 |
+|---|---|---|---|
+| **잔잔한 가계부 (개발)** | `com.budgetbook.mobile.dev` | PC의 개발 서버에서 실시간으로 받음 | `npm run build:dev` (한 번) |
+| 잔잔한 가계부 | `com.budgetbook.mobile` | APK 안에 들어 있음 | `npm run build:apk` / EAS |
+
+### 개발용 앱 (한 번 설치)
 
 ```bash
-npm install
+npm run build:dev
+```
+
+- `dist/budget-book-dev.apk`를 폰에 설치합니다(에뮬레이터는 끌어다 놓기). 처음 빌드는 15~20분 걸립니다.
+- 다시 빌드할 일은 네이티브 패키지(`npx expo install`로 넣는 모듈 중 네이티브 코드가 있는 것)를 추가했을 때뿐입니다. 화면·로직 수정은 빌드 없이 바로 반영됩니다.
+- 디버그 키로 서명되며, 정식 앱과 따로 설치됩니다.
+
+### 매일 개발
+
+```bash
 npx expo start
 ```
 
-- **폰**: Play 스토어에서 Expo Go를 설치하고, PC와 같은 Wi-Fi에서 터미널의 QR 코드를 Expo Go로 찍습니다. 연결이 안 되면 Windows 방화벽에서 Node.js의 개인 네트워크 접근을 허용하거나 `npx expo start --tunnel`을 쓰세요.
-- **에뮬레이터**: 에뮬레이터를 켠 뒤 `npx expo start --android`. SDK에 맞는 Expo Go가 자동으로 설치됩니다(USB 디버깅으로 연결한 폰도 마찬가지).
-- 코드를 저장하면 앱에 바로 반영됩니다. 앱 이름·아이콘·스플래시는 Expo Go에서는 Expo Go 것으로 보이고, APK에서만 적용됩니다.
-- 로컬 웹 서버로 테스트하려면 로그인 화면 서버 주소에 `http://<PC IP>:3000`처럼 `http://`까지 적으면 됩니다(주소만 적으면 `https://`가 붙습니다).
+- 폰에서 **잔잔한 가계부 (개발)**을 열고, 터미널의 QR 코드를 찍거나 목록에 뜨는 개발 서버를 누릅니다. PC와 폰이 같은 Wi-Fi에 있어야 합니다.
+- 코드를 저장하면 1~2초 안에 폰에 반영됩니다. 폰을 흔들거나 터미널에서 `m`을 누르면 개발 메뉴(새로고침 등)가 열립니다.
+- 에뮬레이터는 `npx expo start --android`로 바로 열립니다.
+- 연결이 안 되면 Windows 방화벽에서 Node.js의 개인 네트워크 접근을 허용하거나 `npx expo start --tunnel`을 쓰세요.
+- Expo Go로 열고 싶으면 `npm run start:go` (또는 실행 중에 `s`).
+- 로그인 화면 서버 주소는 `.env.local` 값이 미리 채워집니다. 로컬 웹 서버로 테스트하려면 `http://<PC IP>:3000`처럼 `http://`까지 적으세요.
 
 > PowerShell에서 `npx`/`npm`이 "스크립트를 실행할 수 없으므로…" 오류를 내면 `npx.cmd`, `npm.cmd`로 실행하세요(실행 정책 때문이며, Git Bash·cmd에서는 그대로 됩니다).
 
@@ -66,7 +85,7 @@ npx eas-cli@latest credentials -p android
 npm run build:apk
 ```
 
-- 결과물: `dist/quiet-ledger-v<versionCode>.apk` → 폰으로 옮겨 설치(출처를 알 수 없는 앱 허용 필요).
+- 결과물: `dist/budget-book-v<versionCode>.apk` → 폰으로 옮겨 설치(출처를 알 수 없는 앱 허용 필요).
 - `credentials.json`이 있으면 EAS 키로, 없으면 디버그 키로 서명합니다(시작할 때 어느 쪽인지 출력).
 - versionCode는 `dist/`의 마지막 APK 번호 +1로 정해집니다. 직접 정하려면 `npm run build:apk -- --version-code 7`.
 - CPU 종류: 기본 `phone`(실제 폰 전부). `-- --arch arm64`(최신 폰만, 가장 빠름), `-- --arch emulator`, `-- --arch all`.

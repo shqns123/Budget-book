@@ -107,6 +107,7 @@ export const tabIcons = {
   overview: "home",
   list: "list",
   chart: "bar-chart-2",
+  balance: "pie-chart",
   more: "grid",
   plus: "plus",
 } as const satisfies Record<string, keyof typeof Feather.glyphMap>;

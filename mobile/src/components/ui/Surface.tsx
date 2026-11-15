@@ -69,9 +69,15 @@ export function Row({
   accessibilityLabel,
   destructive,
   dimmed,
+  badge,
+  dense,
 }: {
   title: string;
   meta?: string;
+  /** A small mark under the meta line (e.g. a Tag). */
+  badge?: ReactNode;
+  /** Title and trailing meta 2px smaller (long lists such as the transaction list). */
+  dense?: boolean;
   icon?: IconName;
   iconTone?: "neutral" | "income" | "expense" | "accent" | "danger";
   trailing?: ReactNode | string;
@@ -100,7 +106,13 @@ export function Row({
         </View>
       )}
       <View style={styles.rowText}>
-        <Text variant="body" weight="500" color={destructive ? "danger" : "text"} numberOfLines={1}>
+        <Text
+          variant="body"
+          weight="500"
+          color={destructive ? "danger" : "text"}
+          numberOfLines={1}
+          style={dense ? styles.denseTitle : undefined}
+        >
           {title}
         </Text>
         {meta ? (
@@ -108,6 +120,7 @@ export function Row({
             {meta}
           </Text>
         ) : null}
+        {badge ? <View style={{ flexDirection: "row", marginTop: 4 }}>{badge}</View> : null}
       </View>
       {trailing !== undefined && (
         <View style={styles.trailing}>
@@ -119,7 +132,7 @@ export function Row({
             trailing
           )}
           {trailingMeta ? (
-            <Text variant="caption" color="text2" weight="400">
+            <Text variant="caption" color="text2" weight="400" style={dense ? styles.denseMeta : undefined}>
               {trailingMeta}
             </Text>
           ) : null}
@@ -179,5 +192,7 @@ const styles = StyleSheet.create({
   },
   rowText: { flex: 1, gap: 2 },
   trailing: { alignItems: "flex-end", gap: 2, maxWidth: "50%" },
+  denseTitle: { fontSize: 14, lineHeight: 21 },
+  denseMeta: { fontSize: 10, lineHeight: 14 },
   divider: { height: StyleSheet.hairlineWidth, marginLeft: space.rowX, marginRight: space.rowX },
 });

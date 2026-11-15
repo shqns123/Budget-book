@@ -45,7 +45,20 @@ export type Transaction = {
   type: TransactionType;
   fixed?: boolean;
   memo?: string;
+  /**
+   * On a transfer recorded together with an expense ("자금 이동 같이 기록"): that expense's id.
+   * It counts in balances but is hidden from transaction lists; the expense shows a mark instead,
+   * and editing or deleting the expense updates or removes it. The web app does the same.
+   */
+  linkedTo?: string;
 };
+
+/** Transactions as lists show them: without transfers recorded together with an expense. */
+export const listed = (items: Transaction[]) => items.filter((t) => !t.linkedTo);
+
+/** The transfer recorded together with an expense, if any. */
+export const linkedTransfer = (items: Transaction[], expenseId: string) =>
+  items.find((t) => t.linkedTo === expenseId);
 
 export type RecurringTemplate = {
   id: string;
@@ -240,6 +253,24 @@ export function categoryOptions(
 export const isDebtAccount = (accounts: Account[], id: string) =>
   ["card", "loan"].includes(accounts.find((a) => a.id === id)?.type ?? "");
 
+/** Fixed costs are the expenses marked fixed: the ones registered from the 반복 tab. */
+
+/**
+ * Expenses recorded before registering from the 반복 tab marked them fixed: unmarked expenses with
+ * the same 내용, 대분류 · 소분류 and 출금 통장 as an expense recurring item.
+ */
+export function unmarkedRecurringExpenses(transactions: Transaction[], recurring: RecurringTemplate[]) {
+  const key = (name: string, category: string, minor: string | undefined, accountId: string) =>
+    [name.trim(), category, minor?.trim() ?? "", accountId].join(" ");
+  const keys = new Set(
+    recurring
+      .filter((r) => (r.type ?? "expense") === "expense")
+      .map((r) => key(r.name, r.category, r.minorCategory, r.accountId)),
+  );
+  return transactions.filter(
+    (t) => t.type === "expense" && !t.fixed && keys.has(key(t.name, t.category, t.minorCategory, t.accountId)),
+  );
+}
 export function totals(items: Transaction[]) {
   const income = items
     .filter((i) => i.type === "income")

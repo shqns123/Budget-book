@@ -5,6 +5,7 @@ import {
   Banner,
   EmptyState,
   FieldRow,
+  FoldSection,
   IconButton,
   MoneyField,
   PrimaryButton,
@@ -15,7 +16,6 @@ import {
   Segmented,
   SelectField,
   Sheet,
-  SwitchRow,
   Text,
   TextButton,
   TextField,
@@ -24,6 +24,7 @@ import {
   formatNumber,
   newId,
   typeLabel,
+  unmarkedRecurringExpenses,
   type AccountKind,
   type AccountSetting,
   type CategorySetting,
@@ -151,14 +152,14 @@ function AccountsView({ settings, update }: { settings: SharedSettings; update: 
         const rows = settings.accounts.filter((a) => a.classification === classification);
         if (!rows.length) return null;
         return (
-          <Section key={classification} title={classification}>
+          <FoldSection key={classification} title={classification} meta={`${rows.length}개`}>
             {rows.map((account, index) => (
               <Row
                 key={account.id}
                 first={index === 0}
                 icon={accountIcon[account.kind] ?? "bank"}
                 title={account.name}
-                meta={`${account.code} · ${account.major} · ${account.minor}${account.paymentDay ? ` · ${account.paymentDay}일 결제/상환` : ""}`}
+                meta={`${account.major} · ${account.minor}${account.paymentDay ? ` · ${account.paymentDay}일 결제/상환` : ""}`}
                 dimmed={account.hidden}
                 trailing={
                   <View style={styles.accountTrailing}>
@@ -176,7 +177,7 @@ function AccountsView({ settings, update }: { settings: SharedSettings; update: 
                 }
               />
             ))}
-          </Section>
+          </FoldSection>
         );
       })}
       <Text variant="footnote" weight="400" color="text2">
@@ -229,7 +230,8 @@ function AccountsView({ settings, update }: { settings: SharedSettings; update: 
 
 function CategoriesView({ settings, update }: { settings: SharedSettings; update: UpdateFn }) {
   const { c } = useTheme();
-  const groups = useMemo(() => {
+  const [type, setType] = useState<CategorySetting["transactionType"]>("expense");
+  const allGroups = useMemo(() => {
     const map = new Map<string, { major: string; transactionType: CategorySetting["transactionType"]; rows: { category: CategorySetting; index: number }[] }>();
     settings.categories.forEach((category, index) => {
       const key = `${category.transactionType}:${category.major}`;
@@ -239,6 +241,7 @@ function CategoriesView({ settings, update }: { settings: SharedSettings; update
     });
     return [...map.values()];
   }, [settings.categories]);
+  const groups = allGroups.filter((group) => group.transactionType === type);
 
   const updateGroup = (
     type: CategorySetting["transactionType"],
@@ -259,15 +262,26 @@ function CategoriesView({ settings, update }: { settings: SharedSettings; update
   const updateRow = (index: number, patch: Partial<CategorySetting>, typing?: boolean) =>
     update((s) => ({ ...s, categories: s.categories.map((item, i) => (i === index ? { ...item, ...patch } : item)) }), typing);
 
-  const addGroup = () =>
-    update((s) => {
-      let major = "새 대분류";
-      let suffix = 2;
-      while (s.categories.some((cat) => cat.transactionType === "expense" && cat.major === major)) {
-        major = `새 대분류 ${suffix++}`;
-      }
-      return { ...s, categories: [...s.categories, { major, minor: "새 소분류", fixed: false, transactionType: "expense" }] };
-    });
+  // 대분류 추가: filled in on a sheet, created on 추가.
+  const blankGroup = { transactionType: type, major: "", minor: "" };
+  const [newGroup, setNewGroup] = useState<typeof blankGroup | null>(null);
+  const newMajor = newGroup?.major.trim() ?? "";
+  const duplicate = Boolean(
+    newGroup && settings.categories.some((cat) => cat.transactionType === newGroup.transactionType && cat.major === newMajor),
+  );
+  const addGroup = () => {
+    if (!newGroup || !newMajor || !newGroup.minor.trim() || duplicate) return;
+    const group = newGroup;
+    update((s) => ({
+      ...s,
+      categories: [
+        ...s.categories,
+        { major: newMajor, minor: group.minor.trim(), fixed: false, transactionType: group.transactionType },
+      ],
+    }));
+    setType(group.transactionType);
+    setNewGroup(null);
+  };
 
   const addMinor = (type: CategorySetting["transactionType"], major: string) =>
     update((s) => {
@@ -280,19 +294,24 @@ function CategoriesView({ settings, update }: { settings: SharedSettings; update
 
   return (
     <>
-      <SecondaryButton icon="plus" label="대분류 추가" onPress={addGroup} />
+      <Segmented
+        value={type}
+        onChange={setType}
+        options={[
+          { value: "expense", label: "지출" },
+          { value: "income", label: "수입" },
+        ]}
+        accessibilityLabel="분류 유형"
+      />
+      <SecondaryButton icon="plus" label="대분류 추가" onPress={() => setNewGroup(blankGroup)} />
       {groups.map((group) => (
-        <Section key={group.rows[0].index} padded>
+        <FoldSection
+          key={group.rows[0].index}
+          title={group.major}
+          meta={`${group.rows.length}개`}
+          padded
+        >
           <View style={{ gap: space.md }}>
-            <Segmented
-              value={group.transactionType}
-              onChange={(transactionType) => updateGroup(group.transactionType, group.major, { transactionType })}
-              options={[
-                { value: "expense", label: "지출" },
-                { value: "income", label: "수입" },
-              ]}
-              accessibilityLabel={`${group.major} 거래 유형`}
-            />
             <TextField
               label="대분류"
               value={group.major}
@@ -325,13 +344,51 @@ function CategoriesView({ settings, update }: { settings: SharedSettings; update
                     }}
                   />
                 </View>
-                <SwitchRow label="고정비" value={category.fixed} onChange={(fixed) => updateRow(index, { fixed })} />
               </View>
             ))}
             <TextButton icon="plus" label="소분류 추가" onPress={() => addMinor(group.transactionType, group.major)} />
           </View>
-        </Section>
+        </FoldSection>
       ))}
+      <Sheet
+        visible={Boolean(newGroup)}
+        onClose={() => setNewGroup(null)}
+        title="대분류 추가"
+        footer={
+          <PrimaryButton
+            label="추가"
+            disabled={!newMajor || !newGroup?.minor.trim() || duplicate}
+            onPress={addGroup}
+          />
+        }
+      >
+        {newGroup && (
+          <>
+            <Segmented
+              value={newGroup.transactionType}
+              onChange={(transactionType) => setNewGroup({ ...newGroup, transactionType })}
+              options={[
+                { value: "expense", label: "지출" },
+                { value: "income", label: "수입" },
+              ]}
+              accessibilityLabel="거래 유형"
+            />
+            <TextField
+              label="대분류 이름"
+              value={newGroup.major}
+              onChangeText={(major) => setNewGroup({ ...newGroup, major })}
+              placeholder="예: 🍚식비"
+            />
+            {duplicate ? <Banner message="같은 유형에 이미 있는 대분류예요." /> : null}
+            <TextField
+              label="첫 소분류"
+              value={newGroup.minor}
+              onChangeText={(minor) => setNewGroup({ ...newGroup, minor })}
+              placeholder="예: 외식"
+            />
+          </>
+        )}
+      </Sheet>
     </>
   );
 }
@@ -379,6 +436,12 @@ function BudgetsView({ settings }: { settings: SharedSettings }) {
   );
 }
 
+const RECURRING_GROUPS: { type: TransactionType; label: string }[] = [
+  { type: "expense", label: "지출" },
+  { type: "transfer", label: "이동" },
+  { type: "income", label: "수입" },
+];
+
 type RecurringDraft = {
   id?: string;
   type: TransactionType;
@@ -394,6 +457,22 @@ type RecurringDraft = {
 function RecurringView({ settings }: { settings: SharedSettings }) {
   const { data, save, accounts } = useLedger();
   const [draft, setDraft] = useState<RecurringDraft | null>(null);
+  // Older expenses that match a recurring item but were recorded before those were marked fixed.
+  const unmarked = useMemo(
+    () => unmarkedRecurringExpenses(data.transactions, data.recurring),
+    [data.transactions, data.recurring],
+  );
+  const markFixed = async () => {
+    const ids = new Set(unmarked.map((t) => t.id));
+    const ok = await confirm({
+      title: `거래 ${ids.size}건을 고정비로 표시할까요?`,
+      message:
+        "반복 항목과 내용·분류·출금 통장이 같은 지출이에요. 보고서의 고정비에 포함되고, 웹앱에도 똑같이 반영돼요.",
+      confirmLabel: "고정비로 표시",
+    });
+    if (!ok) return;
+    void save("transactions", (rows) => rows.map((t) => (ids.has(t.id) ? { ...t, fixed: true } : t)));
+  };
   const accountOptions = accounts.map((a) => ({ value: a.id, label: a.name }));
   const majors = (type: TransactionType) =>
     [...new Set(settings.categories.filter((c) => type === "transfer" || c.transactionType === type).map((c) => c.major))];
@@ -465,34 +544,49 @@ function RecurringView({ settings }: { settings: SharedSettings }) {
         message="반복할 지출·수입·이동을 등록해 두면 거래 기록 화면에서 이번 달 항목만 골라 한 번에 등록할 수 있어요."
       />
       <SecondaryButton icon="plus" label="반복 항목 추가" onPress={() => open()} />
-      <Section>
-        {data.recurring.length ? (
-          data.recurring.map((item, index) => {
-            const from = accounts.find((a) => a.id === item.accountId)?.name ?? "";
-            const to = accounts.find((a) => a.id === item.toAccountId)?.name ?? "";
-            return (
-              <Row
-                key={item.id}
-                first={index === 0}
-                icon={item.type === "transfer" ? "transfer" : item.type === "income" ? "income" : "expense"}
-                iconTone={item.type === "income" ? "income" : item.type === "transfer" ? "neutral" : "expense"}
-                title={item.name}
-                meta={
-                  item.type === "transfer"
-                    ? `${from} → ${to}`
-                    : `${item.category} · ${item.minorCategory} · ${from}`
-                }
-                trailing={`${formatNumber(item.amount)}원`}
-                trailingMeta={`매월 ${item.day}일`}
-                chevron
-                onPress={() => open(item)}
-              />
-            );
-          })
-        ) : (
+      {unmarked.length ? (
+        <Banner
+          tone="warn"
+          message={`반복 항목과 같은 기존 지출 ${unmarked.length}건이 아직 고정비로 표시되지 않았어요.`}
+          action={<TextButton label="고정비로 표시" onPress={() => void markFixed()} />}
+        />
+      ) : null}
+      {data.recurring.length ? (
+        RECURRING_GROUPS.map(({ type, label }) => {
+          const items = data.recurring.filter((item) => (item.type ?? "expense") === type);
+          if (!items.length) return null;
+          return (
+            <FoldSection key={type} title={label} meta={`${items.length}개`}>
+              {items.map((item, index) => {
+                const from = accounts.find((a) => a.id === item.accountId)?.name ?? "";
+                const to = accounts.find((a) => a.id === item.toAccountId)?.name ?? "";
+                return (
+                  <Row
+                    key={item.id}
+                    first={index === 0}
+                    icon={item.type === "transfer" ? "transfer" : item.type === "income" ? "income" : "expense"}
+                    iconTone={item.type === "income" ? "income" : item.type === "transfer" ? "neutral" : "expense"}
+                    title={item.name}
+                    meta={
+                      item.type === "transfer"
+                        ? `${from} → ${to}`
+                        : `${item.category} · ${item.minorCategory} · ${from}`
+                    }
+                    trailing={`${formatNumber(item.amount)}원`}
+                    trailingMeta={`매월 ${item.day}일`}
+                    chevron
+                    onPress={() => open(item)}
+                  />
+                );
+              })}
+            </FoldSection>
+          );
+        })
+      ) : (
+        <Section>
           <EmptyState title="반복 항목이 없어요" body="월세, 통신비, 적금 이체처럼 매달 하는 거래를 등록해 보세요." />
-        )}
-      </Section>
+        </Section>
+      )}
       <Sheet
         visible={Boolean(draft)}
         onClose={() => setDraft(null)}

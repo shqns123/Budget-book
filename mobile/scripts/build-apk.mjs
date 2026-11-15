@@ -1,6 +1,8 @@
-// Release APK, built locally with the Android Studio toolchain (no EAS build quota used).
+// APKs built locally with the Android Studio toolchain (no EAS build quota used).
 //
-//   npm run build:apk                      → dist/quiet-ledger-v<versionCode>.apk
+//   npm run build:apk                      → dist/budget-book-v<versionCode>.apk  (release app)
+//   npm run build:dev                      → dist/budget-book-dev.apk  ("잔잔한 가계부 (개발)": loads
+//                                            the code from `npx expo start`, edits show live)
 //   npm run build:apk -- --arch arm64      (phone | arm64 | emulator | all; default phone)
 //   npm run build:apk -- --version-code 5  (default: next number after the newest APK in dist/)
 //   npm run build:apk -- --clean           (regenerate android/ from scratch)
@@ -40,12 +42,17 @@ const ARCHS = {
 const arch = flag("--arch") ?? "phone";
 if (!ARCHS[arch]) fail(`--arch는 ${Object.keys(ARCHS).join(" | ")} 중 하나여야 해요.`);
 
+// --- Which app: production (release APK) or development (dev app, debug build). See app.config.ts.
+const variant = args.includes("--variant") ? flag("--variant") : "production";
+if (variant !== "production" && variant !== "development") fail("--variant는 production | development 중 하나여야 해요.");
+const isDev = variant === "development";
+
 // --- versionCode: must be higher than the app already on the phone, or Android refuses the update.
 let versionCode = Number(flag("--version-code") ?? 0);
 if (!versionCode) {
   let last = 0;
   for (const f of existsSync(join(root, "dist")) ? readdirSync(join(root, "dist")) : []) {
-    const m = /^quiet-ledger-v(\d+)\.apk$/.exec(f);
+    const m = /^budget-book-v(\d+)\.apk$/.exec(f);
     if (m) last = Math.max(last, Number(m[1]));
   }
   versionCode = last + 1;
@@ -68,10 +75,11 @@ if (!existsSync(join(env.JAVA_HOME, "bin", isWin ? "java.exe" : "java"))) {
 }
 if (!existsSync(env.ANDROID_HOME)) fail(`Android SDK를 찾지 못했어요: ${env.ANDROID_HOME}`);
 
-// --- Signing with the EAS keystore, when downloaded.
+// --- Signing with the EAS keystore, when downloaded (release app only; the dev app is a separate
+// app and uses the debug key).
 const credentialsFile = join(root, "credentials.json");
-let signedWith = "디버그 키 (credentials.json 없음)";
-if (existsSync(credentialsFile)) {
+let signedWith = isDev ? "디버그 키 (개발용 앱)" : "디버그 키 (credentials.json 없음)";
+if (!isDev && existsSync(credentialsFile)) {
   const keystore = JSON.parse(readFileSync(credentialsFile, "utf8")).android?.keystore;
   if (!keystore?.keystorePath) fail("credentials.json에 android.keystore가 없어요. eas credentials로 다시 받아 주세요.");
   const storeFile = resolve(root, keystore.keystorePath);
@@ -83,18 +91,22 @@ if (existsSync(credentialsFile)) {
   signedWith = "EAS 키 (credentials.json)";
 }
 
-// --- Same settings as the EAS "preview" profile (eas.json env), e.g. the built-in server address.
-// Variables already set in the shell win.
-const easEnv = JSON.parse(readFileSync(join(root, "eas.json"), "utf8")).build?.preview?.env ?? {};
+// --- Same settings as the EAS profile (eas.json env: "preview" for the release app, "development"
+// for the dev app), e.g. the built-in server address. Variables already set in the shell win.
+const profile = isDev ? "development" : "preview";
+const easEnv = JSON.parse(readFileSync(join(root, "eas.json"), "utf8")).build?.[profile]?.env ?? {};
 for (const [key, value] of Object.entries(easEnv)) env[key] ??= String(value);
+env.APP_VARIANT = variant;
 const apiUrl = env.EXPO_PUBLIC_API_URL ?? "";
-if (apiUrl && !/^https:\/\/[^/]+/.test(apiUrl)) {
+if (!isDev && apiUrl && !/^https:\/\/[^/]+/.test(apiUrl)) {
   fail(`EXPO_PUBLIC_API_URL은 https 주소여야 해요 (릴리스 앱은 http를 막아요): ${apiUrl}`);
 }
 
 env.LOCAL_ANDROID_BUILD = "1";
-env.ANDROID_VERSION_CODE = String(versionCode);
-env.NODE_ENV = "production";
+if (!isDev) {
+  env.ANDROID_VERSION_CODE = String(versionCode);
+  env.NODE_ENV = "production";
+}
 
 // --- C++ build folders under a short root (see the plugin). Stale ones from another checkout go.
 if (isWin) {
@@ -114,22 +126,32 @@ if (isWin) {
 function fetchReactNativeAar() {
   const rn = JSON.parse(readFileSync(join(root, "node_modules", "react-native", "package.json"), "utf8")).version;
   const dir = join(homedir(), ".m2", "repository", "com", "facebook", "react", "react-android", rn);
-  const base = `https://repo.maven.apache.org/maven2/com/facebook/react/react-android/${rn}`;
-  const aar = `react-android-${rn}-release.aar`;
+  const path = `com/facebook/react/react-android/${rn}`;
+  const central = `https://repo.maven.apache.org/maven2/${path}`;
+  // Google's Maven Central mirrors serve the AAR far faster on some networks; Maven Central last.
+  // The checksum always comes from Maven Central itself.
+  const mirrors = [
+    `https://maven-central-asia.storage-download.googleapis.com/maven2/${path}`,
+    `https://maven-central.storage-download.googleapis.com/maven2/${path}`,
+    central,
+  ];
+  const aar = `react-android-${rn}-${isDev ? "debug" : "release"}.aar`;
   const curl = (...a) => spawnSync(isWin ? "curl.exe" : "curl", a, { stdio: "inherit" }).status === 0;
   mkdirSync(dir, { recursive: true });
   for (const f of [`react-android-${rn}.pom`, `react-android-${rn}.module`, `${aar}.sha1`]) {
-    if (!existsSync(join(dir, f)) && !curl("-sSfL", "--retry", "5", "-o", join(dir, f), `${base}/${f}`)) return false;
+    if (!existsSync(join(dir, f)) && !curl("-sSfL", "--retry", "5", "-o", join(dir, f), `${central}/${f}`)) return false;
   }
   const want = readFileSync(join(dir, `${aar}.sha1`), "utf8").trim().slice(0, 40);
   const sha1 = () =>
     existsSync(join(dir, aar)) ? createHash("sha1").update(readFileSync(join(dir, aar))).digest("hex") : "";
   if (sha1() === want) return true;
   console.log(`Fetching ${aar} (resumable)…`);
-  for (let i = 0; i < 60; i++) {
-    if (curl("-sSL", "-C", "-", "--speed-time", "20", "--speed-limit", "2000", "--connect-timeout", "20", "-o", join(dir, aar), `${base}/${aar}`)) break;
+  for (const base of mirrors) {
+    for (let i = 0; i < 10; i++) {
+      if (curl("-sSfL", "-C", "-", "--speed-time", "20", "--speed-limit", "50000", "--connect-timeout", "20", "-o", join(dir, aar), `${base}/${aar}`)) break;
+    }
+    if (sha1() === want) return true;
   }
-  if (sha1() === want) return true;
   rmSync(join(dir, aar), { force: true });
   return false;
 }
@@ -141,10 +163,12 @@ try {
 
 console.log(
   [
-    `versionCode ${versionCode}`,
+    isDev ? "앱: 잔잔한 가계부 (개발) — 개발 서버에서 코드를 받아요" : `versionCode ${versionCode}`,
     `CPU: ${ARCHS[arch]}`,
     `서명: ${signedWith}`,
-    `서버: ${apiUrl || "(없음: .env.local 값이 있으면 그것, 없으면 로그인 화면에서 입력)"}`,
+    isDev
+      ? "서버: .env.local 값이 로그인 화면에 미리 채워져요"
+      : `서버: ${apiUrl || "(없음: .env.local 값이 있으면 그것, 없으면 로그인 화면에서 입력)"}`,
     `JAVA_HOME=${env.JAVA_HOME}`,
     `ANDROID_HOME=${env.ANDROID_HOME}`,
   ].join("\n"),
@@ -153,11 +177,18 @@ console.log(
 const run = (cmd, cwd) => execSync(cmd, { cwd, env, stdio: "inherit" });
 // android/ is generated from app.json (+ plugins). Update it in place; --clean starts over
 // (needed after adding or removing native packages or plugins).
-const clean = args.includes("--clean") || !existsSync(join(root, "android"));
+// Switching between the release app and the dev app changes the package, so that starts over too.
+const variantMark = join(root, "android", ".app-variant");
+const clean =
+  args.includes("--clean") ||
+  !existsSync(join(root, "android")) ||
+  !existsSync(variantMark) ||
+  readFileSync(variantMark, "utf8").trim() !== variant;
 run(`npx expo prebuild --platform android --no-install${clean ? " --clean" : ""}`, root);
+writeFileSync(variantMark, variant);
 
 const gradleArgs = [
-  "assembleRelease",
+  isDev ? "assembleDebug" : "assembleRelease",
   "--console=plain",
   "-Dorg.gradle.internal.http.socketTimeout=120000",
   "-Dorg.gradle.internal.http.connectionTimeout=60000",
@@ -168,8 +199,9 @@ const androidDir = join(root, "android");
 if (isWin) execFileSync("cmd.exe", ["/d", "/c", join(androidDir, "gradlew.bat"), ...gradleArgs], { cwd: androidDir, env, stdio: "inherit" });
 else execFileSync("./gradlew", gradleArgs, { cwd: androidDir, env, stdio: "inherit" });
 
-const built = join(androidDir, "app", "build", "outputs", "apk", "release", "app-release.apk");
+const buildType = isDev ? "debug" : "release";
+const built = join(androidDir, "app", "build", "outputs", "apk", buildType, `app-${buildType}.apk`);
 mkdirSync(join(root, "dist"), { recursive: true });
-const target = join(root, "dist", `quiet-ledger-v${versionCode}.apk`);
+const target = join(root, "dist", isDev ? "budget-book-dev.apk" : `budget-book-v${versionCode}.apk`);
 copyFileSync(built, target);
 console.log(`\nAPK: ${target}`);

@@ -6,7 +6,13 @@
   "build": {
     "development": {
       "developmentClient": true,
-      "distribution": "internal"
+      "distribution": "internal",
+      "env": {
+        "APP_VARIANT": "development"
+      },
+      "android": {
+        "buildType": "apk"
+      }
     },
     "preview": {
       "distribution": "internal",
@@ -15,6 +21,7 @@
       },
       "autoIncrement": true,
       "env": {
+        "APP_VARIANT": "production",
         "EXPO_PUBLIC_API_URL": "https://budget.woojin2.synology.me"
       }
     },
@@ -24,6 +31,7 @@
       },
       "autoIncrement": true,
       "env": {
+        "APP_VARIANT": "production",
         "EXPO_PUBLIC_API_URL": "https://budget.woojin2.synology.me"
       }
     }

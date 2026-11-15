@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
-import { StyleSheet, View } from "react-native";
+import { Pressable, StyleSheet, View } from "react-native";
 import {
-  CheckRow,
   DateField,
   EmptyState,
-  FieldRow,
+  FoldSection,
+  Icon,
   IconButton,
   MoneyField,
   OptionSheet,
@@ -193,39 +193,46 @@ export default function SavingsScreen() {
     void save("monthlySavingsPlans", monthlyPlans.filter((p) => p.id !== id));
     void save("savingsEntries", entries.filter((e) => e.monthlyPlanId !== id));
   };
-  const toggleMonthlyRecord = (item: MonthlySavingsPlan, checked: boolean) => {
-    const existing = entries.find((e) => e.monthlyPlanId === item.id);
-    if (!checked) {
-      void save("savingsEntries", entries.filter((e) => e.id !== existing?.id));
-      return;
+  // 완료 = a savings record made from the monthly item. Marks items (one, a month's or a year's)
+  // done or not in a single save.
+  const isDone = (item: MonthlySavingsPlan) => entries.some((e) => e.monthlyPlanId === item.id);
+  const setDone = (items: MonthlySavingsPlan[], done: boolean) =>
+    // From the latest records, so quick taps in a row don't undo each other.
+    void save("savingsEntries", (rows) => withDone(rows, items, done));
+  const withDone = (rows: SavingsEntry[], items: MonthlySavingsPlan[], done: boolean) => {
+    let next = rows;
+    for (const item of items) {
+      const existing = next.find((e) => e.monthlyPlanId === item.id);
+      if (!done) {
+        next = next.filter((e) => e.monthlyPlanId !== item.id);
+        continue;
+      }
+      if (existing || item.amount <= 0) continue;
+      const entry: SavingsEntry = {
+        id: newId(),
+        goalId: item.goalId,
+        date: `${item.month}-${String(new Date().getDate()).padStart(2, "0")}`,
+        amount: item.amount,
+        accountId: item.accountId,
+        memo: `${Number(item.month.slice(5))}월 ${item.name}`,
+        monthlyMonth: item.month,
+        monthlyPlanId: item.id,
+      };
+      next = [entry, ...next];
     }
-    if (item.amount <= 0) return;
-    const entry: SavingsEntry = {
-      id: existing?.id ?? newId(),
-      goalId: item.goalId,
-      date: `${item.month}-${String(new Date().getDate()).padStart(2, "0")}`,
-      amount: item.amount,
-      accountId: item.accountId,
-      memo: `${Number(item.month.slice(5))}월 ${item.name}`,
-      monthlyMonth: item.month,
-      monthlyPlanId: item.id,
-    };
-    void save("savingsEntries", existing ? entries.map((e) => (e.id === existing.id ? entry : e)) : [entry, ...entries]);
+    return next;
   };
+  const monthItems = (month: string) =>
+    monthlyPlans.filter((p) => p.goalId === selectedGoalId && p.month === month);
+  // Group the months by year for the tree (year → month → items).
+  const years = [...new Set(goalMonths.map((m) => m.month.slice(0, 4)))];
+  const thisMonth = currentMonth();
 
   return (
     <Screen
       title="저축 내역"
       back
       inTabs={false}
-      right={
-        goal ? (
-          <>
-            <IconButton icon="calendar" label="월 저축 설정" onPress={() => setShowMonthly(true)} />
-            <IconButton icon="settings" label="저축 계획 설정" onPress={() => setShowPlan(true)} />
-          </>
-        ) : null
-      }
     >
       {goals.length > 1 && (
         <SelectField
@@ -239,9 +246,13 @@ export default function SavingsScreen() {
       {goal ? (
         <Section tone="accent" padded>
           <View style={{ gap: space.md }}>
-            <Text variant="headline" color="onPrimaryContainer">
-              {goal.name}
-            </Text>
+            <View style={styles.goalHead}>
+              <Text variant="headline" color="onPrimaryContainer" numberOfLines={1} style={{ flex: 1 }}>
+                {goal.name}
+              </Text>
+              <IconButton icon="calendar" tone="accent" label="월 저축 설정" onPress={() => setShowMonthly(true)} />
+              <IconButton icon="settings" tone="accent" label="저축 계획 설정" onPress={() => setShowPlan(true)} />
+            </View>
             <View style={styles.amountLine}>
               <Text variant="title1" color="onPrimaryContainer" tabular style={{ flexShrink: 1 }}>
                 {won(saved)}
@@ -335,7 +346,7 @@ export default function SavingsScreen() {
             <Section title="세부 계획">
               <View style={{ padding: space.lg, gap: space.md }}>
                 {goalPlan.map((item) => (
-                  <View key={item.id} style={styles.planRow}>
+                  <View key={item.id} style={[styles.item, { backgroundColor: c.bg }]}>
                     <TextField
                       compact
                       defaultValue={item.name}
@@ -343,30 +354,31 @@ export default function SavingsScreen() {
                       onChangeText={(name) =>
                         savePlan(plan.map((p) => (p.id === item.id ? { ...p, name } : p)), TYPING)
                       }
-                      style={{ flex: 1.2 }}
                     />
-                    {item.accountId ? (
-                      <View style={[styles.readonly, { backgroundColor: c.subtle }]}>
-                        <Text variant="subhead" color="text2" tabular numberOfLines={1}>
-                          {formatNumber(resolvePlanAmount(item))}원
-                        </Text>
-                      </View>
-                    ) : (
-                      <MoneyField
-                        compact
-                        accessibilityLabel={`${item.name} 계획 금액`}
-                        value={item.amount}
-                        onChange={(digits) =>
-                          savePlan(plan.map((p) => (p.id === item.id ? { ...p, amount: Number(digits) } : p)), TYPING)
-                        }
+                    <View style={styles.planRow}>
+                      {item.accountId ? (
+                        <View style={[styles.readonly, { backgroundColor: c.subtle }]}>
+                          <Text variant="subhead" color="text2" tabular numberOfLines={1}>
+                            {formatNumber(resolvePlanAmount(item))}원
+                          </Text>
+                        </View>
+                      ) : (
+                        <MoneyField
+                          compact
+                          accessibilityLabel={`${item.name} 계획 금액`}
+                          value={item.amount}
+                          onChange={(digits) =>
+                            savePlan(plan.map((p) => (p.id === item.id ? { ...p, amount: Number(digits) } : p)), TYPING)
+                          }
+                        />
+                      )}
+                      <IconButton
+                        icon="trash"
+                        tone="danger"
+                        label={`${item.name} 삭제`}
+                        onPress={() => savePlan(plan.filter((p) => p.id !== item.id))}
                       />
-                    )}
-                    <IconButton
-                      icon="trash"
-                      tone="danger"
-                      label={`${item.name} 삭제`}
-                      onPress={() => savePlan(plan.filter((p) => p.id !== item.id))}
-                    />
+                    </View>
                   </View>
                 ))}
                 <View style={styles.actionsRow}>
@@ -426,82 +438,122 @@ export default function SavingsScreen() {
         visible={showMonthly && Boolean(goal)}
         onClose={() => setShowMonthly(false)}
         title="월 저축 설정"
-        subtitle={goal ? `${goal.name}의 월별 예상 저축을 등록하고, 실제로 저축한 항목만 완료로 체크해요.` : undefined}
+        subtitle={
+          goal
+            ? `${goal.name}의 월별 예상 저축을 등록하고, 실제로 저축한 항목만 완료로 체크해요. 연·월 옆 체크는 그 안의 항목을 한 번에 체크해요.`
+            : undefined
+        }
       >
-        {goalMonths.map((monthItem) => (
-          <Section
-            key={monthItem.id}
-            title={monthItem.month}
-            action={<TextButton label="연월 삭제" tone="danger" onPress={() => removeMonth(monthItem)} />}
-          >
-            <View style={{ padding: space.lg, gap: space.md }}>
-              <TextField
-                compact
-                label="연월 (YYYY-MM)"
-                defaultValue={monthItem.month}
-                keyboardType="numbers-and-punctuation"
-                onChangeText={(value) => updateMonth(monthItem, value)}
-              />
-              {monthlyPlans
-                .filter((p) => p.goalId === selectedGoalId && p.month === monthItem.month)
-                .map((item) => {
-                  const completed = entries.some((e) => e.monthlyPlanId === item.id);
+        {years.map((year) => {
+          const months = goalMonths.filter((m) => m.month.slice(0, 4) === year);
+          const yearItems = months.flatMap((m) => monthItems(m.month));
+          const yearDone = yearItems.length > 0 && yearItems.every(isDone);
+          return (
+            <FoldSection
+              key={year}
+              title={`${year}년`}
+              meta={`${months.length}개월`}
+              defaultOpen={year === thisMonth.slice(0, 4)}
+              padded
+              right={
+                <DoneCheck
+                  checked={yearDone}
+                  disabled={!yearItems.length}
+                  label={`${year}년 전체 완료`}
+                  onPress={() => setDone(yearItems, !yearDone)}
+                />
+              }
+            >
+              <View style={{ gap: space.sm }}>
+                {months.map((monthItem) => {
+                  const items = monthItems(monthItem.month);
+                  const monthDone = items.length > 0 && items.every(isDone);
+                  const total = items.reduce((sum, item) => sum + item.amount, 0);
                   return (
-                    <View key={item.id} style={[styles.monthlyItem, { backgroundColor: c.bg }]}>
-                      <FieldRow>
+                    <FoldSection
+                      key={monthItem.id}
+                      inset
+                      padded
+                      title={/^\d{4}-\d{2}$/.test(monthItem.month) ? `${Number(monthItem.month.slice(5))}월` : monthItem.month}
+                      meta={won(total)}
+                      defaultOpen={monthItem.month === thisMonth}
+                      right={
+                        <DoneCheck
+                          checked={monthDone}
+                          disabled={!items.length}
+                          label={`${monthItem.month} 전체 완료`}
+                          onPress={() => setDone(items, !monthDone)}
+                        />
+                      }
+                    >
+                      <View style={{ gap: space.md }}>
+                        {items.map((item) => {
+                          const done = isDone(item);
+                          return (
+                            <View key={item.id} style={[styles.item, { backgroundColor: c.card }]}>
+                              <TextField
+                                compact
+                                defaultValue={item.name}
+                                placeholder="예: 기본 저축, 상여"
+                                accessibilityLabel="저축 항목"
+                                onChangeText={(name) => updateMonthlyPlan(item.id, { name })}
+                              />
+                              <View style={styles.planRow}>
+                                <MoneyField
+                                  compact
+                                  accessibilityLabel="예상 저축 금액"
+                                  value={item.amount}
+                                  onChange={(digits) => updateMonthlyPlan(item.id, { amount: Number(digits) })}
+                                />
+                                <DoneCheck
+                                  checked={done}
+                                  disabled={!done && item.amount <= 0}
+                                  label={`${item.name} 완료${done ? ", 저축 기록에 추가됨" : ""}`}
+                                  onPress={() => setDone([item], !done)}
+                                />
+                                <IconButton
+                                  icon="trash"
+                                  tone="danger"
+                                  label="월 저축 항목 삭제"
+                                  onPress={() => removeMonthlyPlan(item.id)}
+                                />
+                              </View>
+                            </View>
+                          );
+                        })}
+                        <TextButton
+                          icon="plus"
+                          label="항목 추가"
+                          onPress={() =>
+                            void save("monthlySavingsPlans", [
+                              ...monthlyPlans,
+                              {
+                                id: newId(),
+                                goalId: selectedGoalId,
+                                month: monthItem.month,
+                                name: "새 항목",
+                                amount: 0,
+                                accountId: defaultSavingsAccount,
+                              },
+                            ])
+                          }
+                        />
                         <TextField
                           compact
-                          defaultValue={item.name}
-                          placeholder="예: 기본 저축, 상여"
-                          accessibilityLabel="저축 항목"
-                          onChangeText={(name) => updateMonthlyPlan(item.id, { name })}
+                          label="연월 바꾸기 (YYYY-MM)"
+                          defaultValue={monthItem.month}
+                          keyboardType="numbers-and-punctuation"
+                          onChangeText={(value) => updateMonth(monthItem, value)}
                         />
-                        <MoneyField
-                          compact
-                          accessibilityLabel="예상 저축 금액"
-                          value={item.amount}
-                          onChange={(digits) => updateMonthlyPlan(item.id, { amount: Number(digits) })}
-                        />
-                      </FieldRow>
-                      <View style={styles.planRow}>
-                        <View style={{ flex: 1 }}>
-                          <CheckRow
-                            label="완료"
-                            meta={completed ? "저축 기록에 추가됨" : undefined}
-                            checked={completed}
-                            onToggle={() => toggleMonthlyRecord(item, !completed)}
-                          />
-                        </View>
-                        <IconButton
-                          icon="trash"
-                          tone="danger"
-                          label="월 저축 항목 삭제"
-                          onPress={() => removeMonthlyPlan(item.id)}
-                        />
+                        <TextButton label="이 달 삭제" tone="danger" onPress={() => removeMonth(monthItem)} />
                       </View>
-                    </View>
+                    </FoldSection>
                   );
                 })}
-              <TextButton
-                icon="plus"
-                label="항목 추가"
-                onPress={() =>
-                  void save("monthlySavingsPlans", [
-                    ...monthlyPlans,
-                    {
-                      id: newId(),
-                      goalId: selectedGoalId,
-                      month: monthItem.month,
-                      name: "새 항목",
-                      amount: 0,
-                      accountId: defaultSavingsAccount,
-                    },
-                  ])
-                }
-              />
-            </View>
-          </Section>
-        ))}
+              </View>
+            </FoldSection>
+          );
+        })}
         <SecondaryButton
           icon="plus"
           label="연·월 추가"
@@ -512,7 +564,64 @@ export default function SavingsScreen() {
   );
 }
 
+/**
+ * The round 완료 check used on monthly items and on each month / year of the tree. It flips at
+ * once and saves on the next frame, so the tap shows before the screen re-renders.
+ */
+function DoneCheck({
+  checked,
+  onPress,
+  label,
+  disabled,
+}: {
+  checked: boolean;
+  onPress: () => void;
+  label: string;
+  disabled?: boolean;
+}) {
+  const { c } = useTheme();
+  const [shown, setShown] = useState(checked);
+  const [wasChecked, setWasChecked] = useState(checked);
+  if (checked !== wasChecked) {
+    setWasChecked(checked);
+    setShown(checked);
+  }
+  return (
+    <Pressable
+      onPress={() => {
+        setShown(!shown);
+        requestAnimationFrame(onPress);
+      }}
+      disabled={disabled}
+      hitSlop={10}
+      accessibilityRole="checkbox"
+      accessibilityState={{ checked: shown, disabled }}
+      accessibilityLabel={label}
+      style={({ pressed }) => [
+        styles.check,
+        {
+          backgroundColor: shown ? c.primaryContainer : pressed ? c.fill : "transparent",
+          borderColor: shown ? c.primaryContainer : c.strong,
+        },
+        disabled && { opacity: 0.4 },
+      ]}
+    >
+      {shown ? <Icon name="check" size={15} color={c.onPrimaryContainer} /> : null}
+    </Pressable>
+  );
+}
+
 const styles = StyleSheet.create({
+  goalHead: { flexDirection: "row", alignItems: "center", gap: space.xs, marginVertical: -space.sm },
+  item: { borderRadius: radius.control, padding: space.md, gap: space.sm },
+  check: {
+    width: 24,
+    height: 24,
+    borderRadius: radius.pill,
+    borderWidth: 1.5,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   amountLine: { flexDirection: "row", alignItems: "baseline", justifyContent: "space-between", gap: space.md },
   planRow: { flexDirection: "row", alignItems: "center", gap: space.sm },
   readonly: {
@@ -524,5 +633,4 @@ const styles = StyleSheet.create({
   },
   actionsRow: { flexDirection: "row", gap: space.lg, flexWrap: "wrap" },
   totalRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingTop: space.sm },
-  monthlyItem: { borderRadius: radius.card, padding: space.md, gap: space.sm },
 });

@@ -1,18 +1,17 @@
 import { ImageManipulator, SaveFormat } from "expo-image-manipulator";
 import * as ImagePicker from "expo-image-picker";
-import { router, useLocalSearchParams } from "expo-router";
-import { useMemo, useState } from "react";
-import { StyleSheet, View } from "react-native";
+import { useMemo, useState, type ComponentProps } from "react";
+import { Pressable, StyleSheet, View } from "react-native";
 import { useScopeSelection } from "@/components/ledger/ScopeControls";
 import {
   Banner,
   DateField,
   FieldRow,
+  Icon,
   IconButton,
   MoneyField,
   LoadingView,
-  PrimaryButton,
-  Screen,
+  Popup,
   SecondaryButton,
   Section,
   Segmented,
@@ -21,12 +20,15 @@ import {
   Text,
   TextButton,
   TextField,
+  PopupActions,
 } from "@/components/ui";
 import { apiFetch } from "@/lib/api";
+import { closeCompose, finishCompose, useCompose } from "@/lib/compose";
 import { todayIso } from "@/lib/dates";
 import {
   categoryOptions,
   isDebtAccount,
+  linkedTransfer,
   newId,
   typeLabel,
   type RecurringTemplate,
@@ -36,7 +38,7 @@ import {
 import { useLedger } from "@/store/ledger-store";
 import { usePrefs } from "@/store/prefs-store";
 import { useTheme } from "@/theme/theme";
-import { radius, space } from "@/theme/tokens";
+import { radius, size, space } from "@/theme/tokens";
 
 type ImageDraft = {
   id: string;
@@ -61,23 +63,32 @@ const isIsoDate = (value?: string) => Boolean(value && /^\d{4}-\d{2}-\d{2}$/.tes
 
 type Params = { id?: string; account?: string; date?: string };
 
-export default function ComposeScreen() {
-  const params = useLocalSearchParams<Params>();
+/**
+ * Add / edit a transaction: a popup above the floating tab bar, opened with openCompose().
+ * Mounted once in the tab layout, before the tab bar.
+ */
+export function ComposePopup() {
+  const { request, open } = useCompose();
   const { status } = useLedger();
+  if (!request) return null;
+  const popup: PopupFrame = {
+    visible: open,
+    onRequestClose: closeCompose,
+    onClosed: () => finishCompose(request.key),
+    title: request.id ? "거래 수정" : "거래 기록",
+    from: request.from,
+  };
   if (status !== "ready") {
     return (
-      <Screen
-        title="거래 기록"
-        inTabs={false}
-        refreshable={false}
-        right={<IconButton icon="close" label="닫기" filled onPress={() => router.back()} />}
-      >
+      <Popup key={request.key} {...popup} footer={<PopupActions onCancel={closeCompose} />}>
         <LoadingView />
-      </Screen>
+      </Popup>
     );
   }
-  return <ComposeForm params={params} />;
+  return <ComposeForm key={request.key} params={request} popup={popup} />;
 }
+
+type PopupFrame = Omit<ComponentProps<typeof Popup>, "children" | "footer">;
 
 /** The form's starting values: the record being edited, or a new one. */
 function useInitialForm(params: Params) {
@@ -119,8 +130,9 @@ function useInitialForm(params: Params) {
   return initial;
 }
 
-function ComposeForm({ params }: { params: Params }) {
+function ComposeForm({ params, popup }: { params: Params; popup: PopupFrame }) {
   const { c } = useTheme();
+  const close = closeCompose;
   const { data, accounts, categories, save } = useLedger();
   const { month } = usePrefs();
   const { selected, include } = useScopeSelection("transactions");
@@ -135,6 +147,24 @@ function ComposeForm({ params }: { params: Params }) {
   const [toAccountId, setToAccountId] = useState(initial.toAccountId);
   const [category, setCategory] = useState(initial.category);
   const [minorCategory, setMinorCategory] = useState(initial.minorCategory);
+  // "자금 이동 같이 기록": a transfer (보내는 통장 → 월급통장) saved with an expense, same amount
+  // and date, hidden from lists. 월급통장 defaults to last time's.
+  const { linkTransfer, setLinkTransfer } = usePrefs();
+  const [link] = useState(() => {
+    const existing = editing ? linkedTransfer(data.transactions, editing.id) : undefined;
+    const exists = (id?: string) => Boolean(id && accounts.some((a) => a.id === id));
+    const to = existing?.toAccountId ?? (exists(linkTransfer.to) ? linkTransfer.to : "");
+    // 보내는 통장: the one account picked on the transactions tab (as for 출금 통장), else last time's.
+    const picked = exists(params.account) && params.account !== to ? params.account : undefined;
+    const from =
+      existing?.accountId ??
+      picked ??
+      (exists(linkTransfer.from) ? linkTransfer.from : (accounts.find((a) => a.id !== to)?.id ?? ""));
+    return { existing, on: Boolean(existing), from, to };
+  });
+  const [linkOn, setLinkOn] = useState(link.on);
+  const [linkFrom, setLinkFrom] = useState(link.from);
+  const [linkTo, setLinkTo] = useState(link.to);
   const [formError, setFormError] = useState("");
   const [saving, setSaving] = useState(false);
   const [recurringBatch, setRecurringBatch] = useState<RecurringTemplate[] | null>(null);
@@ -171,6 +201,12 @@ function ComposeForm({ params }: { params: Params }) {
     if (!accounts.some((a) => a.id === accountId)) return setFormError("출금 통장을 다시 선택해 주세요.");
     if (type === "transfer" && !accounts.some((a) => a.id === toAccountId))
       return setFormError("입금 통장을 다시 선택해 주세요.");
+    const withLink = type === "expense" && linkOn;
+    if (withLink) {
+      if (!accounts.some((a) => a.id === linkTo)) return setFormError("자금 이동을 받을 월급통장을 골라 주세요.");
+      if (!accounts.some((a) => a.id === linkFrom) || linkFrom === linkTo)
+        return setFormError("자금 이동을 보내는 통장을 월급통장과 다른 통장으로 골라 주세요.");
+    }
     setFormError("");
     const record: Transaction = {
       id: editing?.id ?? newId(),
@@ -185,12 +221,29 @@ function ComposeForm({ params }: { params: Params }) {
       ...(editing?.memo ? { memo: editing.memo } : {}),
       ...(editing?.fixed !== undefined ? { fixed: editing.fixed } : {}),
     };
-    const next = editing
-      ? data.transactions.map((t) => (t.id === editing.id ? record : t))
-      : [record, ...data.transactions];
+    const transfer: Transaction | null = withLink
+      ? {
+          id: link.existing?.id ?? newId(),
+          accountId: linkFrom,
+          toAccountId: linkTo,
+          name: `${record.name} 자금 이동`,
+          category: "이동",
+          amount: record.amount,
+          date: record.date,
+          type: "transfer",
+          linkedTo: record.id,
+        }
+      : null;
+    // The old linked transfer (if any) is replaced, or dropped when the box is off.
+    const rest = data.transactions.filter((t) => t.linkedTo !== record.id);
+    const withRecord = editing ? rest.map((t) => (t.id === editing.id ? record : t)) : [record, ...rest];
+    const next = transfer
+      ? withRecord.flatMap((t) => (t.id === record.id ? [t, transfer] : [t]))
+      : withRecord;
     if (await persist(next)) {
+      if (transfer) setLinkTransfer({ from: linkFrom, to: linkTo });
       include([record.accountId, record.toAccountId]);
-      router.back();
+      close();
     }
   };
 
@@ -206,10 +259,12 @@ function ComposeForm({ params }: { params: Params }) {
       amount: item.type === "income" ? item.amount : -item.amount,
       date: `${month.replace("-", ".")}.${String(Math.min(31, Math.max(1, item.day))).padStart(2, "0")}`,
       type: item.type ?? "expense",
+      // Recurring expenses are the fixed costs.
+      ...((item.type ?? "expense") === "expense" ? { fixed: true } : {}),
     }));
     if (await persist([...records, ...data.transactions])) {
       include(records.flatMap((r) => [r.accountId, r.toAccountId]));
-      router.back();
+      close();
     }
   };
 
@@ -312,7 +367,7 @@ function ComposeForm({ params }: { params: Params }) {
     }));
     if (await persist([...records, ...data.transactions])) {
       include(records.flatMap((r) => [r.accountId, r.toAccountId]));
-      router.back();
+      close();
     }
   };
 
@@ -327,13 +382,25 @@ function ComposeForm({ params }: { params: Params }) {
         ? "지출 기록하기"
         : "수입 기록하기";
   const batchOpen = Boolean(imageBatch || recurringBatch);
+  // The floating bar's main action follows what the popup shows.
+  const action = imageBatch
+    ? { label: `${imageBatch.length}건 일괄 등록`, onPress: registerImages, disabled: !imageBatch.length }
+    : recurringBatch
+      ? { label: `${recurringBatch.length}건 일괄 등록`, onPress: registerRecurring, disabled: !recurringBatch.length }
+      : { label: saveLabel, onPress: submit, disabled: false };
 
   return (
-    <Screen
-      title={editing ? "거래 수정" : "거래 기록"}
-      inTabs={false}
-      refreshable={false}
-      right={<IconButton icon="close" label="닫기" filled onPress={() => router.back()} />}
+    <Popup
+      {...popup}
+      footer={
+        <PopupActions
+          onCancel={close}
+          label={action.label}
+          onPress={() => void action.onPress()}
+          loading={saving}
+          disabled={action.disabled}
+        />
+      }
     >
       {!editing && (
         <View style={{ gap: space.md }}>
@@ -441,12 +508,6 @@ function ComposeForm({ params }: { params: Params }) {
                 </View>
               );
             })}
-            <PrimaryButton
-              label={`확인한 ${imageBatch.length}건 일괄 등록`}
-              disabled={!imageBatch.length}
-              loading={saving}
-              onPress={() => void registerImages()}
-            />
           </View>
         </Section>
       )}
@@ -508,12 +569,6 @@ function ComposeForm({ params }: { params: Params }) {
                 </FieldRow>
               </View>
             ))}
-            <PrimaryButton
-              label="선택 항목 일괄 등록"
-              disabled={!recurringBatch.length}
-              loading={saving}
-              onPress={() => void registerRecurring()}
-            />
           </View>
         </Section>
       )}
@@ -539,42 +594,88 @@ function ComposeForm({ params }: { params: Params }) {
                 </FieldRow>
               ) : (
                 <>
-                  <FieldRow>
-                    <SelectField
-                      label="대분류"
-                      value={category}
-                      options={Object.keys(options).map((k) => ({ value: k, label: k }))}
-                      onChange={(value) => {
-                        setCategory(value);
-                        setMinorCategory(options[value]?.[0] ?? "");
-                      }}
-                    />
-                    <SelectField
-                      label="소분류"
-                      value={minorCategory}
-                      options={(options[category] ?? []).map((k) => ({ value: k, label: k }))}
-                      onChange={setMinorCategory}
-                    />
-                  </FieldRow>
                   <SelectField
-                    label={type === "income" ? "입금 통장" : "출금 통장"}
-                    value={accountId}
-                    options={accountOptions}
-                    onChange={setAccountId}
+                    label="대분류"
+                    value={category}
+                    options={Object.keys(options).map((k) => ({ value: k, label: k }))}
+                    onChange={(value) => {
+                      setCategory(value);
+                      setMinorCategory(options[value]?.[0] ?? "");
+                    }}
                   />
+                  <SelectField
+                    label="소분류"
+                    value={minorCategory}
+                    options={(options[category] ?? []).map((k) => ({ value: k, label: k }))}
+                    onChange={setMinorCategory}
+                  />
+                  {type === "income" ? (
+                    <SelectField label="입금 통장" value={accountId} options={accountOptions} onChange={setAccountId} />
+                  ) : (
+                    <View style={styles.accountRow}>
+                      <SelectField label="출금 통장" value={accountId} options={accountOptions} onChange={setAccountId} />
+                      <LinkToggle on={linkOn} onPress={() => setLinkOn((v) => !v)} />
+                    </View>
+                  )}
+                  {type === "expense" && linkOn ? (
+                    <View style={[styles.linkBox, { backgroundColor: c.bg }]}>
+                      <Text variant="footnote" weight="400" color="text2">
+                        같은 금액·날짜로 월급통장으로 보내는 이동도 함께 기록해요. 거래 내역에는 따로 보이지 않고,
+                        이 지출에 표시돼요.
+                      </Text>
+                      <SelectField
+                        label="보내는 통장"
+                        value={linkFrom}
+                        options={accountOptions.filter((o) => o.value !== linkTo)}
+                        onChange={setLinkFrom}
+                      />
+                      <SelectField label="받는 통장 (월급통장)" value={linkTo} options={accountOptions} onChange={setLinkTo} />
+                    </View>
+                  ) : null}
                 </>
               )}
             </View>
           </Section>
           {formError ? <Banner message={formError} /> : null}
-          <PrimaryButton label={saveLabel} loading={saving} onPress={() => void submit()} />
         </>
       )}
-    </Screen>
+    </Popup>
+  );
+}
+
+/** The "자금 이동 같이 기록" switch beside 출금 통장. */
+function LinkToggle({ on, onPress }: { on: boolean; onPress: () => void }) {
+  const { c } = useTheme();
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="checkbox"
+      accessibilityState={{ checked: on }}
+      accessibilityLabel="자금 이동 같이 기록"
+      style={({ pressed }) => [
+        styles.linkToggle,
+        { backgroundColor: on ? c.primaryContainer : pressed ? c.fill : c.subtle },
+      ]}
+    >
+      <Icon name={on ? "checkbox" : "checkboxEmpty"} size={20} color={on ? c.onPrimaryContainer : c.tertiary} />
+      <Text variant="subhead" weight="600" color={on ? "onPrimaryContainer" : "text2"}>
+        자금 이동
+      </Text>
+    </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
+  accountRow: { flexDirection: "row", alignItems: "flex-end", gap: space.sm },
+  linkToggle: {
+    minHeight: size.control,
+    borderRadius: radius.control,
+    paddingHorizontal: space.md,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  linkBox: { borderRadius: radius.card, padding: space.lg, gap: space.md },
   draft: { borderRadius: radius.card, padding: space.lg, gap: space.md },
   draftHead: { flexDirection: "row", alignItems: "center", gap: space.sm },
 });

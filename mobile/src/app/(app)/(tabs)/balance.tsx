@@ -48,8 +48,6 @@ export default function BalanceScreen() {
   return (
     <Screen
       title="잔고"
-      back
-      inTabs={false}
       above={
         <ChipRow>
           <MonthChip />

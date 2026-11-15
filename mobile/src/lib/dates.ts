@@ -13,6 +13,10 @@ export const currentMonth = () => todayIso().slice(0, 7);
 export const monthLabel = (month: string) =>
   `${month.slice(0, 4)}년 ${Number(month.slice(5, 7))}월`;
 
+/** "26년 11월": the overview title. */
+export const shortMonthLabel = (month: string) =>
+  `${month.slice(2, 4)}년 ${Number(month.slice(5, 7))}월`;
+
 export const shiftMonth = (month: string, delta: number) => {
   const [year, m] = month.split("-").map(Number);
   const date = new Date(year, m - 1 + delta, 1);

@@ -1,19 +1,19 @@
-import DateTimePicker, { DateTimePickerAndroid } from "@react-native-community/datetimepicker";
 import { useState, type ReactNode } from "react";
 import {
-  Platform,
   Pressable,
   StyleSheet,
   TextInput,
   View,
   type TextInputProps,
   type ViewStyle,
+  useWindowDimensions,
 } from "react-native";
-import { dateToIso, isoToDate, spokenDate } from "@/lib/dates";
+import { spokenDate } from "@/lib/dates";
 import { formatNumber, parseNumberInput } from "@/lib/ledger";
 import { useTheme } from "@/theme/theme";
 import { radius, size, space, type } from "@/theme/tokens";
-import { PrimaryButton } from "./Button";
+import { Calendar } from "./Calendar";
+import { FoldMenu, useFoldAnchor } from "./FoldMenu";
 import { Icon } from "./Icon";
 import { Sheet } from "./Sheet";
 import { Text } from "./Text";
@@ -220,7 +220,10 @@ export function OptionSheet<T extends string>({
   );
 }
 
-/** Date input. Android uses the system dialog, iOS an inline calendar sheet. */
+/**
+ * Date input. Tapping it grows the app's calendar out of the field to the middle of the screen
+ * (FoldMenu); picking a day folds it back into the field.
+ */
 export function DateField({
   label,
   value,
@@ -238,66 +241,55 @@ export function DateField({
   accessibilityLabel?: string;
 }) {
   const { c } = useTheme();
-  const [iosOpen, setIosOpen] = useState(false);
-  const [draft, setDraft] = useState(() => isoToDate(value));
+  const { width: screenW } = useWindowDimensions();
+  const { ref: anchorRef, anchor, open, show, hide, clear } = useFoldAnchor();
   const valid = /^\d{4}-\d{2}-\d{2}$/.test(value);
-  const open = () => {
-    const current = valid ? isoToDate(value) : new Date();
-    if (Platform.OS === "android") {
-      DateTimePickerAndroid.open({
-        value: current,
-        mode: "date",
-        onValueChange: (_event, date) => onChange(dateToIso(date)),
-      });
-    } else {
-      setDraft(current);
-      setIosOpen(true);
-    }
-  };
+  const menuWidth = Math.min(CALENDAR_WIDTH, screenW - space.lg * 2);
   return (
     <Labelled label={label} style={style}>
-      <Pressable
-        onPress={open}
-        accessibilityRole="button"
-        accessibilityLabel={`${accessibilityLabel ?? label ?? "날짜"}, ${valid ? spokenDate(value) : "선택 안 됨"}`}
-        style={({ pressed }) => [
-          styles.control,
-          compact && styles.compact,
-          { backgroundColor: pressed ? c.fill : c.subtle },
-        ]}
-      >
-        <Text variant="body" numberOfLines={1} style={{ flex: 1 }}>
-          {valid ? (compact ? value.slice(5).replace("-", ".") : spokenDate(value)) : "날짜 선택"}
-        </Text>
-        {!compact && <Icon name="calendar" size={18} color={c.text2} />}
-      </Pressable>
-      {Platform.OS === "ios" && (
-        <Sheet
-          visible={iosOpen}
-          onClose={() => setIosOpen(false)}
-          title={label ?? "날짜"}
-          footer={
-            <PrimaryButton
-              label="선택"
-              onPress={() => {
-                onChange(dateToIso(draft));
-                setIosOpen(false);
-              }}
-            />
-          }
+      <View ref={anchorRef} collapsable={false}>
+        <Pressable
+          onPress={show}
+          accessibilityRole="button"
+          accessibilityLabel={`${accessibilityLabel ?? label ?? "날짜"}, ${valid ? spokenDate(value) : "선택 안 됨"}`}
+          style={({ pressed }) => [
+            styles.control,
+            compact && styles.compact,
+            { backgroundColor: pressed || open ? c.fill : c.subtle },
+          ]}
         >
-          <DateTimePicker
-            value={draft}
-            mode="date"
-            display="inline"
-            locale="ko-KR"
-            onValueChange={(_event, date) => setDraft(date)}
+          <Text variant="body" numberOfLines={1} style={{ flex: 1 }}>
+            {valid ? (compact ? value.slice(5).replace("-", ".") : spokenDate(value)) : "날짜 선택"}
+          </Text>
+          {!compact && <Icon name="calendar" size={18} color={c.text2} />}
+        </Pressable>
+      </View>
+      {anchor ? (
+        <FoldMenu
+          anchor={anchor}
+          visible={open}
+          onClose={hide}
+          onClosed={clear}
+          maxWidth={CALENDAR_WIDTH}
+          placement="center"
+          anchorRadius={radius.control}
+          accessibilityLabel={label ?? "날짜 선택"}
+        >
+          <Calendar
+            value={valid ? value : ""}
+            width={menuWidth - space.md * 2}
+            onPick={(iso) => {
+              onChange(iso);
+              hide();
+            }}
           />
-        </Sheet>
-      )}
+        </FoldMenu>
+      ) : null}
     </Labelled>
   );
 }
+
+const CALENDAR_WIDTH = 340;
 
 export function FieldRow({ children }: { children: ReactNode }) {
   return <View style={{ flexDirection: "row", gap: space.md }}>{children}</View>;

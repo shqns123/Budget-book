@@ -10,8 +10,6 @@ export default function AppLayout() {
       <LedgerProvider>
         <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: c.bg } }}>
           <Stack.Screen name="(tabs)" />
-          <Stack.Screen name="compose" options={{ presentation: "modal" }} />
-          <Stack.Screen name="balance" />
           <Stack.Screen name="savings" />
           <Stack.Screen name="settings" />
         </Stack>

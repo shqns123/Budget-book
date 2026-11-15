@@ -12,7 +12,6 @@ import {
   Chip,
   ChipRow,
   EmptyState,
-  Icon,
   PrimaryButton,
   Screen,
   Section,
@@ -24,11 +23,12 @@ import {
   TextField,
 } from "@/components/ui";
 import { monthLabel, spokenDate } from "@/lib/dates";
-import { typeLabel, type Transaction, type TransactionType } from "@/lib/ledger";
+import { linkedTransfer, listed, typeLabel, type Transaction, type TransactionType } from "@/lib/ledger";
 import { useLedger } from "@/store/ledger-store";
 import { usePrefs } from "@/store/prefs-store";
 import { useTheme } from "@/theme/theme";
 import { radius, space } from "@/theme/tokens";
+import { openCompose } from "@/lib/compose";
 import { confirm } from "@/lib/confirm";
 
 type TypeFilter = "all" | TransactionType;
@@ -49,7 +49,7 @@ export default function TransactionsScreen() {
 
   const visible = useMemo(() => {
     const prefix = month.replace("-", ".");
-    const list = data.transactions.filter(
+    const list = listed(data.transactions).filter(
       (item) =>
         item.date.startsWith(prefix) &&
         (!selected.length ||
@@ -68,6 +68,8 @@ export default function TransactionsScreen() {
     ...accounts.map((a) => ({ value: a.id, label: a.name })),
   ];
 
+  const detailLinked = detail ? linkedTransfer(data.transactions, detail.id) : undefined;
+
   const remove = async (record: Transaction) => {
     const ok = await confirm({
       title: "거래를 삭제할까요?",
@@ -76,7 +78,9 @@ export default function TransactionsScreen() {
       destructive: true,
     });
     if (!ok) return;
-    if (await save("transactions", (rows) => rows.filter((r) => r.id !== record.id))) setDetail(null);
+    // The transfer recorded together with it goes too.
+    const gone = (r: Transaction) => r.id === record.id || r.linkedTo === record.id;
+    if (await save("transactions", (rows) => rows.filter((r) => !gone(r)))) setDetail(null);
   };
 
   return (
@@ -89,13 +93,6 @@ export default function TransactionsScreen() {
         </ChipRow>
       }
     >
-      <View style={[styles.guide, { backgroundColor: c.card }]}>
-        <Icon name="transfer" size={20} color={c.text2} />
-        <Text variant="footnote" weight="400" color="text2" style={{ flex: 1 }}>
-          카드 사용은 해당 카드의 지출로, 결제·상환은 출금 통장에서 카드·대출 계좌로 이동으로 기록해요. 이동은 소비로 중복 집계되지 않아요.
-        </Text>
-      </View>
-
       <View style={{ gap: space.md }}>
         <TextField
           value={query}
@@ -130,6 +127,7 @@ export default function TransactionsScreen() {
               item={item}
               accounts={accounts}
               first={index === 0}
+              linked={linkedTransfer(data.transactions, item.id)}
               onPress={() => setDetail(item)}
             />
           ))
@@ -185,6 +183,9 @@ export default function TransactionsScreen() {
               <DetailLine label="통장" value={accountText(accounts, detail)} />
               <DetailLine label="금액" value={amountText(detail)} strong />
               {detail.memo ? <DetailLine label="메모" value={detail.memo} /> : null}
+              {detailLinked ? (
+                <DetailLine label="자금 이동" value={accountText(accounts, detailLinked)} />
+              ) : null}
             </View>
             <View style={{ flexDirection: "row", gap: space.sm }}>
               <SecondaryButton
@@ -194,7 +195,7 @@ export default function TransactionsScreen() {
                 onPress={() => {
                   const id = detail.id;
                   setDetail(null);
-                  router.push({ pathname: "/compose", params: { id } });
+                  openCompose({ id, from: "center" });
                 }}
               />
               <SecondaryButton style={{ flex: 1 }} icon="trash" tone="danger" label="삭제" onPress={() => remove(detail)} />
@@ -223,13 +224,6 @@ function DetailLine({ label, value, strong }: { label: string; value: string; st
 }
 
 const styles = StyleSheet.create({
-  guide: {
-    flexDirection: "row",
-    gap: space.md,
-    padding: space.lg,
-    borderRadius: radius.card,
-    alignItems: "flex-start",
-  },
   detail: { borderRadius: radius.card, paddingHorizontal: space.rowX, paddingVertical: space.sm },
   detailLine: { flexDirection: "row", alignItems: "center", minHeight: 44, gap: space.md },
 });

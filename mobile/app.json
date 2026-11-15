@@ -1,8 +1,8 @@
 {
   "expo": {
     "name": "잔잔한 가계부",
-    "slug": "quiet-ledger",
-    "scheme": "quietledger",
+    "slug": "budget-book",
+    "scheme": "budgetbook",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -10,10 +10,10 @@
     "backgroundColor": "#f5f6f8",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.quietledger.mobile"
+      "bundleIdentifier": "com.budgetbook.mobile"
     },
     "android": {
-      "package": "com.quietledger.mobile",
+      "package": "com.budgetbook.mobile",
       "adaptiveIcon": {
         "backgroundColor": "#fbe1d1",
         "foregroundImage": "./assets/android-icon-foreground.png",
@@ -62,7 +62,7 @@
         }
       },
       "eas": {
-        "projectId": "ee506e51-5d2b-419b-aa7b-a0e5a36ec05a"
+        "projectId": "b4c08ea9-4fe0-4e40-a690-cb42a79f3572"
       }
     },
     "owner": "woojinsong"

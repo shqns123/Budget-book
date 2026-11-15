@@ -1,3 +1,5 @@
+import { FONT_FAMILY } from "./fonts";
+
 /**
  * 잔잔한 가계부 — native theme.
  *
@@ -153,16 +155,20 @@ export const opacity = {
   disabled: 0.4,
 } as const;
 
-/** One system family; hierarchy from weight. 12px is the floor. */
+/**
+ * One family (Plus Jakarta Sans, see theme/fonts.ts; Hangul in the system Korean font);
+ * hierarchy from weight. 12px is the floor.
+ */
+const fontFamily = FONT_FAMILY;
 export const type = {
-  title1: { fontSize: 30, lineHeight: 36, fontWeight: "700", letterSpacing: -0.5 },
-  title2: { fontSize: 22, lineHeight: 29, fontWeight: "700", letterSpacing: -0.3 },
-  headline: { fontSize: 17, lineHeight: 24, fontWeight: "600" },
-  body: { fontSize: 16, lineHeight: 24, fontWeight: "400" },
-  subhead: { fontSize: 15, lineHeight: 22, fontWeight: "400" },
-  footnote: { fontSize: 13, lineHeight: 18, fontWeight: "600" },
-  caption: { fontSize: 12, lineHeight: 16, fontWeight: "600" },
-  tabLabel: { fontSize: 11, lineHeight: 14, fontWeight: "500" },
+  title1: { fontFamily, fontSize: 30, lineHeight: 36, fontWeight: "700", letterSpacing: -0.5 },
+  title2: { fontFamily, fontSize: 22, lineHeight: 29, fontWeight: "700", letterSpacing: -0.3 },
+  headline: { fontFamily, fontSize: 17, lineHeight: 24, fontWeight: "600" },
+  body: { fontFamily, fontSize: 16, lineHeight: 24, fontWeight: "400" },
+  subhead: { fontFamily, fontSize: 15, lineHeight: 22, fontWeight: "400" },
+  footnote: { fontFamily, fontSize: 13, lineHeight: 18, fontWeight: "600" },
+  caption: { fontFamily, fontSize: 12, lineHeight: 16, fontWeight: "600" },
+  tabLabel: { fontFamily, fontSize: 11, lineHeight: 14, fontWeight: "500" },
 } as const;
 
 export type TypeRole = keyof typeof type;
