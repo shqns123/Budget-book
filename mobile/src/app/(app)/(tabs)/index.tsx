@@ -1,212 +1,327 @@
 import { useMemo, useState } from "react";
 import { StyleSheet, View } from "react-native";
-import { AccountSheet, MonthChip, useScopeSelection } from "@/components/ledger/ScopeControls";
-import { ChipRow, Icon, ProgressBar, Row, Screen, Section, Text, TextButton } from "@/components/ui";
-import { monthLabel, shiftMonth } from "@/lib/dates";
-import { calculateAccountBalances, inMonth, signedWon, totals, won } from "@/lib/ledger";
+import { AccountChip, MonthChip, useScopeSelection } from "@/components/ledger/ScopeControls";
+import {
+  ChipRow,
+  EmptyState,
+  ProgressBar,
+  Row,
+  Screen,
+  Section,
+  Segmented,
+  Sheet,
+  Text,
+} from "@/components/ui";
+import { monthLabel, shortDate } from "@/lib/dates";
+import { inMonth, totals, withinSelected, won } from "@/lib/ledger";
 import { useLedger } from "@/store/ledger-store";
 import { usePrefs } from "@/store/prefs-store";
 import { useTheme } from "@/theme/theme";
 import { radius, space } from "@/theme/tokens";
+import type { ColorTokens } from "@/theme/tokens";
 
-function change(current: number, previous: number) {
-  if (!previous) return null;
-  return ((current - previous) / previous) * 100;
-}
-
-export default function OverviewScreen() {
-  const { data, accounts } = useLedger();
-  const { month } = usePrefs();
-  const { selected } = useScopeSelection("overview");
-  const [pickAccounts, setPickAccounts] = useState(false);
-
-  const summary = useMemo(() => {
-    const now = totals(inMonth(data.transactions, month));
-    const before = totals(inMonth(data.transactions, shiftMonth(month, -1)));
-    const balances = calculateAccountBalances(accounts, data.transactions, `${month}-31`);
-    const budgets = selected.length
-      ? data.budgets.filter((b) => selected.includes(b.accountId))
-      : [];
-    const budget = budgets.reduce((sum, b) => sum + b.amount, 0);
-    const details = budgets.map((b) => ({
-      ...b,
-      name: accounts.find((a) => a.id === b.accountId)?.name ?? "",
-      balance: balances.get(b.accountId) ?? 0,
-    }));
-    const remaining = details.reduce((sum, d) => sum + d.balance, 0);
-    const used = Math.min(budget, Math.max(0, budget - remaining));
-    return {
-      income: now.income,
-      expense: now.expense,
-      incomeChange: change(now.income, before.income),
-      expenseChange: change(now.expense, before.expense),
-      budget,
-      details,
-      remaining,
-      used,
-    };
-  }, [data.transactions, data.budgets, accounts, month, selected]);
-
-  const net = summary.income - summary.expense;
-
+export default function ReportsScreen() {
+  const [period, setPeriod] = useState<"month" | "year">("month");
   return (
     <Screen
-      title="개요"
+      title="보고서"
       above={
         <ChipRow>
           <MonthChip />
+          <AccountChip scope="reports" />
         </ChipRow>
       }
     >
-      <View style={{ gap: space.sm }}>
-        <Text variant="subhead" color="text2">
-          {monthLabel(month)}의 흐름
-        </Text>
-        <Text variant="title1" tabular accessibilityLabel={`이번 달 순수입 ${signedWon(net)}`}>
-          {net >= 0 ? "+" : "−"}
-          {won(net)}
-        </Text>
-        <Text variant="subhead" color="text2">
-          {net > 0
-            ? "들어온 돈이 나간 돈보다 많아요."
-            : net < 0
-              ? "나간 돈이 들어온 돈보다 많아요."
-              : "들어온 돈과 나간 돈이 같아요."}
-        </Text>
-      </View>
-
-      <View style={styles.pair}>
-        <StatCard label="이번 달 수입" value={summary.income} delta={summary.incomeChange} positiveIsGood />
-        <StatCard label="이번 달 지출" value={summary.expense} delta={summary.expenseChange} />
-      </View>
-
-      <Section
-        title={summary.budget ? "이번 달 남은 예산" : "이번 달 예산"}
-        action={<TextButton label="통장 선택" icon="settings" onPress={() => setPickAccounts(true)} />}
-        tone="accent"
-        padded
-      >
-        {!selected.length ? (
-          <EmptyBudget title="통장을 선택해 주세요" body="예산을 확인할 통장을 고르면 남은 금액을 보여드려요." />
-        ) : !summary.budget ? (
-          <EmptyBudget
-            title="예산이 지정되지 않았어요"
-            body="선택한 통장에는 이번 달 예산이 없어요. 가계부 설정의 월 예산에서 지정할 수 있어요."
-          />
-        ) : (
-          <View style={{ gap: space.md }}>
-            <Text variant="title1" color="onPrimaryContainer" tabular>
-              {signedWon(summary.remaining)}
-            </Text>
-            <ProgressBar value={(summary.used / summary.budget) * 100} />
-            <Text variant="footnote" weight="400" color="onPrimaryContainer">
-              예산 {won(summary.budget)} 중 {won(summary.used)} 사용
-            </Text>
-            <View style={{ gap: space.xs, marginTop: space.xs }}>
-              {summary.details.map((d) => (
-                <View key={d.accountId} style={styles.budgetLine}>
-                  <Text variant="subhead" color="onPrimaryContainer" numberOfLines={1} style={{ flex: 1 }}>
-                    {d.name}
-                  </Text>
-                  <Text variant="subhead" weight="600" color="onPrimaryContainer" tabular>
-                    {signedWon(d.balance)} 남음
-                  </Text>
-                </View>
-              ))}
-            </View>
-          </View>
-        )}
-      </Section>
-
-      <RecentSection />
-      <AccountSheet scope="overview" visible={pickAccounts} onClose={() => setPickAccounts(false)} title="예산 통장 선택" />
+      <Segmented
+        value={period}
+        onChange={setPeriod}
+        options={[
+          { value: "month", label: "월간" },
+          { value: "year", label: "연간" },
+        ]}
+        accessibilityLabel="보고서 기간"
+      />
+      {period === "month" ? <MonthlyReport /> : <YearlyReport />}
     </Screen>
   );
 }
 
-function EmptyBudget({ title, body }: { title: string; body: string }) {
+function MonthlyReport() {
+  const { data } = useLedger();
+  const { month } = usePrefs();
+  const { selected } = useScopeSelection("reports");
+  const [category, setCategory] = useState<string | null>(null);
+
+  const report = useMemo(() => {
+    const current = withinSelected(inMonth(data.transactions, month), selected);
+    const now = totals(current);
+    const expenses = current.filter((i) => i.type === "expense");
+    const byCategory = Object.entries(
+      expenses.reduce<Record<string, number>>((result, item) => {
+        result[item.category] = (result[item.category] ?? 0) + Math.abs(item.amount);
+        return result;
+      }, {}),
+    ).sort((a, b) => b[1] - a[1]);
+    const top = [...expenses].sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount)).slice(0, 4);
+    const ratio = now.income ? Number(((now.expense / now.income) * 100).toFixed(1)) : 0;
+    const fixedRatio = now.expense ? Math.round((now.fixedExpense / now.expense) * 100) : 0;
+    return { current, now, byCategory, top, ratio, fixedRatio };
+  }, [data.transactions, month, selected]);
+
+  const categoryRecords = category
+    ? report.current
+        .filter((i) => i.type === "expense" && i.category === category)
+        .sort((a, b) => b.date.localeCompare(a.date))
+    : [];
+  const minorTotals = Object.entries(
+    categoryRecords.reduce<Record<string, number>>((result, item) => {
+      const minor = item.minorCategory?.trim() || "미분류";
+      result[minor] = (result[minor] ?? 0) + Math.abs(item.amount);
+      return result;
+    }, {}),
+  ).sort((a, b) => b[1] - a[1]);
+  const categoryTotal = categoryRecords.reduce((sum, i) => sum + Math.abs(i.amount), 0);
+  const maxCategory = report.byCategory[0]?.[1] ?? 1;
+
   return (
-    <View style={{ gap: space.xs }}>
-      <Text variant="headline" color="onPrimaryContainer">
-        {title}
-      </Text>
-      <Text variant="subhead" color="onPrimaryContainer">
-        {body}
-      </Text>
-    </View>
+    <>
+      <MetricGrid
+        items={[
+          { label: "총수입", value: report.now.income },
+          { label: "총지출", value: -report.now.expense, neutral: true },
+          { label: "순수입", value: report.now.income - report.now.expense },
+          { label: "수입 대비 지출", value: report.ratio, percentage: true },
+        ]}
+      />
+
+      <Section title="분류별 지출">
+        {report.byCategory.length ? (
+          report.byCategory.map(([name, amount], index) => (
+            <View key={name}>
+              <Row
+                first={index === 0}
+                title={name}
+                trailing={`−${won(amount)}`}
+                chevron
+                onPress={() => setCategory(name)}
+                accessibilityLabel={`${name} ${won(amount)}, 상세 내역 보기`}
+              />
+              <View style={styles.barInset}>
+                <ProgressBar value={(amount / maxCategory) * 100} tone="expense" />
+              </View>
+            </View>
+          ))
+        ) : (
+          <EmptyState title="이번 달 지출이 없어요" />
+        )}
+      </Section>
+
+      {report.top.length > 0 && (
+        <Section title="이번 달 큰 지출">
+          {report.top.map((item, index) => (
+            <Row
+              key={item.id}
+              first={index === 0}
+              title={item.name}
+              meta={`${index + 1}위 · ${shortDate(item.date)}`}
+              trailing={`−${won(item.amount)}`}
+            />
+          ))}
+        </Section>
+      )}
+
+      <Section title="고정비와 변동비" padded>
+        <View style={{ gap: space.lg }}>
+          <SplitLine label="고정비" amount={report.now.fixedExpense} pct={report.fixedRatio} />
+          <SplitLine label="변동비" amount={report.now.variableExpense} pct={report.now.expense ? 100 - report.fixedRatio : 0} tone="expense" />
+        </View>
+      </Section>
+
+      <Sheet
+        visible={Boolean(category)}
+        onClose={() => setCategory(null)}
+        title={category ?? ""}
+        subtitle={`${monthLabel(month)} · ${categoryRecords.length}건 · −${won(categoryTotal)}`}
+      >
+        <Section title="소분류">
+          {minorTotals.map(([minor, amount], index) => (
+            <Row key={minor} first={index === 0} title={minor} trailing={`−${won(amount)}`} />
+          ))}
+        </Section>
+        <Section title="거래 내역">
+          {categoryRecords.map((item, index) => (
+            <Row
+              key={item.id}
+              first={index === 0}
+              title={item.name}
+              meta={`${shortDate(item.date)} · ${item.minorCategory?.trim() || "미분류"}`}
+              trailing={`−${won(item.amount)}`}
+            />
+          ))}
+        </Section>
+      </Sheet>
+    </>
   );
 }
 
-function StatCard({
-  label,
-  value,
-  delta,
-  positiveIsGood,
-}: {
-  label: string;
-  value: number;
-  delta: number | null;
-  positiveIsGood?: boolean;
-}) {
+function YearlyReport() {
   const { c } = useTheme();
-  const up = (delta ?? 0) >= 0;
-  const good = positiveIsGood ? up : !up;
+  const { data } = useLedger();
+  const { month } = usePrefs();
+  const { selected } = useScopeSelection("reports");
+  const year = month.slice(0, 4);
+
+  const rows = useMemo(
+    () =>
+      Array.from({ length: 12 }, (_, index) => {
+        const key = `${year}-${String(index + 1).padStart(2, "0")}`;
+        return { month: index + 1, ...totals(withinSelected(inMonth(data.transactions, key), selected)) };
+      }),
+    [data.transactions, year, selected],
+  );
+  const annual = rows.reduce(
+    (sum, r) => ({
+      income: sum.income + r.income,
+      expense: sum.expense + r.expense,
+      fixedExpense: sum.fixedExpense + r.fixedExpense,
+    }),
+    { income: 0, expense: 0, fixedExpense: 0 },
+  );
+  const high = Math.max(1, ...rows.flatMap((r) => [r.income, r.expense]));
+  const fixedRatio = annual.expense ? Number(((annual.fixedExpense / annual.expense) * 100).toFixed(1)) : 0;
+
   return (
-    <View style={[styles.stat, { backgroundColor: c.card }]}>
-      <Text variant="footnote" color="text2">
+    <>
+      <MetricGrid
+        items={[
+          { label: "연간 총수입", value: annual.income },
+          { label: "연간 총지출", value: -annual.expense, neutral: true },
+          { label: "연간 순수입", value: annual.income - annual.expense },
+          { label: "고정비 비율", value: fixedRatio, percentage: true },
+        ]}
+      />
+      <Section title={`${year}년 월별 수입과 지출`} padded>
+        <View
+          style={styles.chart}
+          accessibilityLabel={`${year}년 월별 수입과 지출 막대 그래프. 자세한 숫자는 아래 월별 상세에 있어요.`}
+        >
+          {rows.map((r) => (
+            <View key={r.month} style={styles.column}>
+              <View style={styles.pair}>
+                <View style={[styles.bar, { height: (r.income / high) * 140, backgroundColor: c.chartIncome }]} />
+                <View style={[styles.bar, { height: (r.expense / high) * 140, backgroundColor: c.chartExpense }]} />
+              </View>
+              <Text variant="caption" weight="500" color="text2">
+                {r.month}
+              </Text>
+            </View>
+          ))}
+        </View>
+        <View style={styles.legend}>
+          <Legend color="chartIncome" label="수입" />
+          <Legend color="chartExpense" label="지출" />
+        </View>
+      </Section>
+      <Section title="월별 상세">
+        {rows.map((r, index) => {
+          const net = r.income - r.expense;
+          return (
+            <Row
+              key={r.month}
+              first={index === 0}
+              title={`${r.month}월`}
+              meta={`수입 +${won(r.income)} · 지출 −${won(r.expense)}`}
+              trailing={`${net >= 0 ? "+" : "−"}${won(net)}`}
+              trailingColor={net >= 0 ? "income" : "expense"}
+            />
+          );
+        })}
+      </Section>
+    </>
+  );
+}
+
+function Legend({ color, label }: { color: keyof ColorTokens; label: string }) {
+  const { c } = useTheme();
+  return (
+    <View style={styles.legendItem}>
+      <View style={[styles.legendDot, { backgroundColor: c[color] }]} />
+      <Text variant="footnote" weight="400" color="text2">
         {label}
       </Text>
-      <Text variant="headline" tabular numberOfLines={1} adjustsFontSizeToFit={false}>
-        {won(value)}
-      </Text>
-      {delta === null ? (
-        <Text variant="caption" weight="400" color="text2">
-          지난달 기록 없음
-        </Text>
-      ) : (
-        <View style={styles.delta}>
-          <Icon name={up ? "income" : "expense"} size={14} color={good ? c.income : c.expense} />
-          <Text variant="caption" style={{ color: good ? c.income : c.expense }}>
-            지난달보다 {Math.abs(delta).toFixed(1)}%
-          </Text>
-        </View>
-      )}
     </View>
   );
 }
 
-function RecentSection() {
-  const { data, accounts } = useLedger();
-  const recent = [...data.transactions].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 5);
-  if (!recent.length) return null;
+function SplitLine({
+  label,
+  amount,
+  pct,
+  tone,
+}: {
+  label: string;
+  amount: number;
+  pct: number;
+  tone?: "expense";
+}) {
   return (
-    <Section title="최근 거래">
-      {recent.map((item, index) => (
-        <Row
-          key={item.id}
-          first={index === 0}
-          title={item.name}
-          meta={item.date}
-          icon={item.type === "transfer" ? "transfer" : item.type === "income" ? "income" : "expense"}
-          iconTone={item.type === "transfer" ? "neutral" : item.type === "income" ? "income" : "expense"}
-          trailing={`${item.type === "income" ? "+" : item.type === "transfer" ? "↔ " : "−"}${won(item.amount)}`}
-          trailingColor={item.type === "income" ? "income" : item.type === "transfer" ? "text2" : "text"}
-          trailingMeta={accounts.find((a) => a.id === item.accountId)?.name}
-        />
-      ))}
-    </Section>
+    <View style={{ gap: space.sm }}>
+      <View style={styles.splitHead}>
+        <Text variant="subhead" weight="600">
+          {label}
+        </Text>
+        <Text variant="subhead" color="text2" tabular>
+          {won(amount)} · {pct}%
+        </Text>
+      </View>
+      <ProgressBar value={pct} tone={tone} />
+    </View>
+  );
+}
+
+function MetricGrid({
+  items,
+}: {
+  items: { label: string; value: number; percentage?: boolean; neutral?: boolean }[];
+}) {
+  const { c } = useTheme();
+  return (
+    <View style={styles.grid}>
+      {items.map((item) => {
+        const positive = item.value >= 0;
+        const color: keyof ColorTokens =
+          item.neutral || item.percentage ? "text" : positive ? "income" : "expense";
+        return (
+          <View key={item.label} style={[styles.metric, { backgroundColor: c.card }]}>
+            <Text variant="footnote" color="text2">
+              {item.label}
+            </Text>
+            <Text variant="headline" color={color} tabular numberOfLines={1}>
+              {item.percentage ? `${item.value}%` : `${item.value > 0 ? "+" : item.value < 0 ? "−" : ""}${won(item.value)}`}
+            </Text>
+          </View>
+        );
+      })}
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  pair: { flexDirection: "row", gap: space.md },
-  stat: {
-    flex: 1,
+  grid: { flexDirection: "row", flexWrap: "wrap", gap: space.md },
+  metric: {
+    width: "48%",
+    flexGrow: 1,
     borderRadius: radius.card,
-    paddingHorizontal: space.lg,
-    paddingVertical: space.lg,
+    padding: space.lg,
     gap: space.xs,
   },
-  delta: { flexDirection: "row", alignItems: "center", gap: 2 },
-  budgetLine: { flexDirection: "row", alignItems: "center", gap: space.sm },
+  barInset: { paddingHorizontal: space.rowX, paddingBottom: space.md, marginTop: -space.xs },
+  chart: { flexDirection: "row", alignItems: "flex-end", height: 168, gap: 2 },
+  column: { flex: 1, alignItems: "center", gap: space.xs, justifyContent: "flex-end" },
+  pair: { flexDirection: "row", alignItems: "flex-end", gap: 2, height: 140 },
+  bar: { width: 7, borderTopLeftRadius: 4, borderTopRightRadius: 4, minHeight: 1 },
+  legend: { flexDirection: "row", gap: space.lg, marginTop: space.md },
+  legendItem: { flexDirection: "row", alignItems: "center", gap: space.xs },
+  legendDot: { width: 10, height: 10, borderRadius: 3 },
+  splitHead: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
 });

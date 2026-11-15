@@ -606,6 +606,16 @@ a {
 .ledger-name .ledger-mobile-meta {
   display: none;
 }
+/* An expense whose transfer was recorded with it (native app's "자금 이동 같이 기록"). */
+.ledger-name .linked-mark {
+  justify-self: start;
+  width: fit-content;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: var(--peach);
+  color: var(--sienna);
+  font-weight: 600;
+}
 .pill {
   justify-self: start;
   padding: 5px 8px;
@@ -1311,7 +1321,7 @@ a {
 }
 .category-minor-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 74px 40px;
+  grid-template-columns: minmax(0, 1fr) 40px;
   gap: 9px;
   align-items: center;
   padding: 9px 0;
@@ -1319,17 +1329,6 @@ a {
 }
 .category-minor-row:first-child {
   border-top: 0;
-}
-.category-minor-row label {
-  display: flex;
-  gap: 5px;
-  align-items: center;
-  color: var(--slate);
-  font-size: 11px;
-  white-space: nowrap;
-}
-.category-minor-row label input {
-  accent-color: var(--ink);
 }
 .category-minor-row > button {
   border: 0;
@@ -1375,13 +1374,6 @@ a {
   }
   .category-minor-row {
     grid-template-columns: minmax(0, 1fr) auto;
-  }
-  .category-minor-row label {
-    grid-column: 1;
-  }
-  .category-minor-row > button {
-    grid-column: 2;
-    grid-row: 2;
   }
 }
 .balance-title,

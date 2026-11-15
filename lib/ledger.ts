@@ -65,6 +65,12 @@ export type Transaction = {
   type: "income" | "expense" | "transfer";
   fixed?: boolean;
   memo?: string;
+  /**
+   * On a transfer the native app recorded together with an expense ("자금 이동 같이 기록"):
+   * that expense's id. It counts in balances but is hidden from transaction lists; the expense
+   * shows a mark instead, and editing or deleting the expense updates or removes it.
+   */
+  linkedTo?: string;
 };
 
 export function calculateAccountBalances(

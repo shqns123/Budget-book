@@ -250,6 +250,8 @@ function TransactionsContent() {
       amount: item.type === "income" ? item.amount : -item.amount,
       date: `${month.replace("-", ".")}.${String(Math.min(31, Math.max(1, item.day))).padStart(2, "0")}`,
       type: item.type ?? "expense",
+      // Expenses registered from the 반복 list are the fixed costs.
+      ...((item.type ?? "expense") === "expense" ? { fixed: true } : {}),
     }));
     const next = [...recordsToAdd, ...records];
     if (await persistRecords(next)) {
@@ -450,6 +452,7 @@ function TransactionsContent() {
       return;
     }
     setFormError("");
+    const editing = editingId ? records.find((item) => item.id === editingId) : undefined;
     const record: Transaction = {
       id: editingId ?? crypto.randomUUID(),
       accountId,
@@ -460,10 +463,22 @@ function TransactionsContent() {
       amount: type === "income" ? numericAmount : -numericAmount,
       date: (date || `${month}-01`).replaceAll("-", "."),
       type,
+      // Keep what the form doesn't edit (memo, the fixed-cost mark from the 반복 list).
+      ...(editing?.memo ? { memo: editing.memo } : {}),
+      ...(editing?.fixed !== undefined ? { fixed: editing.fixed } : {}),
     };
-    const next = editingId
+    const edited = editingId
       ? records.map((item) => (item.id === editingId ? record : item))
       : [record, ...records];
+    // A transfer recorded with this expense in the app follows its amount, date and name, and
+    // goes away if the record is no longer an expense.
+    const next = edited.flatMap((item) =>
+      item.linkedTo !== record.id
+        ? [item]
+        : record.type === "expense"
+          ? [{ ...item, amount: record.amount, date: record.date, name: `${record.name} 자금 이동` }]
+          : [],
+    );
     if (await persistRecords(next)) {
       includeRecordAccounts(selected, updateSelected, [
         record.accountId,
@@ -473,7 +488,7 @@ function TransactionsContent() {
     }
   }
   function removeRecord(id: string) {
-    const next = records.filter((item) => item.id !== id);
+    const next = records.filter((item) => item.id !== id && item.linkedTo !== id);
     void persistRecords(next).then((saved) => {
       if (saved) {
         setDetailRecord(null);
@@ -491,6 +506,7 @@ function TransactionsContent() {
         ].filter(Boolean).length;
         const visible = records.filter(
           (item) =>
+            !item.linkedTo &&
             item.date.startsWith(month.replace("-", ".")) &&
             (!selected.length ||
               selected.includes(item.accountId) ||
@@ -671,6 +687,9 @@ function TransactionsContent() {
                           ` → ${accounts.find((account) => account.id === item.toAccountId)?.name}`}
                       </small>
                       {item.memo && <small>{item.memo}</small>}
+                      {records.some((linked) => linked.linkedTo === item.id) && (
+                        <small className="linked-mark">자금 이동 함께 기록됨</small>
+                      )}
                     </span>
                   </div>
                   <span className="pill">

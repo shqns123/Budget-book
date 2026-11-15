@@ -520,22 +520,6 @@ export default function SettingsPage() {
                             )
                           }
                         />
-                        <label>
-                          <input
-                            type="checkbox"
-                            checked={category.fixed}
-                            onChange={() =>
-                              setCategories((items) =>
-                                items.map((item, itemIndex) =>
-                                  itemIndex === index
-                                    ? { ...item, fixed: !item.fixed }
-                                    : item,
-                                ),
-                              )
-                            }
-                          />{" "}
-                          고정비
-                        </label>
                         <button
                           type="button"
                           onClick={() =>
