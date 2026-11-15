@@ -1,0 +1,70 @@
+{
+  "expo": {
+    "name": "잔잔한 가계부",
+    "slug": "quiet-ledger",
+    "scheme": "quietledger",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "automatic",
+    "backgroundColor": "#f5f6f8",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.quietledger.mobile"
+    },
+    "android": {
+      "package": "com.quietledger.mobile",
+      "adaptiveIcon": {
+        "backgroundColor": "#fbe1d1",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": true,
+      "softwareKeyboardLayoutMode": "resize"
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      "@react-native-community/datetimepicker",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "은행 앱 화면이나 영수증 사진에서 거래를 불러오기 위해 사진에 접근해요.",
+          "cameraPermission": false,
+          "microphonePermission": false
+        }
+      ],
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 160,
+          "resizeMode": "contain",
+          "backgroundColor": "#fbe1d1",
+          "dark": {
+            "backgroundColor": "#101318"
+          }
+        }
+      ],
+      "expo-font",
+      "./plugins/withLocalAndroidBuild"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    },
+    "extra": {
+      "router": {
+        "asyncRoutes": {
+          "web": true
+        }
+      },
+      "eas": {
+        "projectId": "ee506e51-5d2b-419b-aa7b-a0e5a36ec05a"
+      }
+    },
+    "owner": "woojinsong"
+  }
+}
