@@ -16,14 +16,23 @@ export async function POST(request: Request) {
       { status: 503 },
     );
   }
-  const body = (await request.json()) as { username?: unknown; password?: unknown };
+  const body = (await request.json()) as {
+    username?: unknown;
+    password?: unknown;
+    client?: unknown;
+  };
   const username = typeof body.username === "string" ? body.username : "";
   const password = typeof body.password === "string" ? body.password : "";
   if (!hasValidCredentials(username, password)) {
     return NextResponse.json({ error: "아이디 또는 비밀번호가 올바르지 않습니다." }, { status: 401 });
   }
-  const response = NextResponse.json({ ok: true });
-  response.cookies.set(SESSION_COOKIE_NAME, await issueSessionToken(), {
+  const token = await issueSessionToken();
+  // The native app keeps the token in secure storage and sends it as a bearer header.
+  // Browsers never receive it in the body; they only get the httpOnly cookie.
+  const response = NextResponse.json(
+    body.client === "native" ? { ok: true, token } : { ok: true },
+  );
+  response.cookies.set(SESSION_COOKIE_NAME, token, {
     httpOnly: true,
     sameSite: "lax",
     secure: process.env.NODE_ENV === "production",

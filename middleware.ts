@@ -14,6 +14,23 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
+  // The native app sends its session token as a bearer header instead of a cookie.
+  const bearer = request.headers.get("authorization")?.match(/^Bearer\s+(.+)$/i)?.[1];
+  if (bearer) {
+    if (await verifySessionToken(bearer, process.env.AUTH_SECRET)) {
+      // Sliding session for the app: hand back a fresh token on every request.
+      const response = NextResponse.next();
+      response.headers.set(
+        "x-session-token",
+        await createSessionToken(process.env.AUTH_SECRET!),
+      );
+      return response;
+    }
+    if (pathname.startsWith("/api/")) {
+      return NextResponse.json({ error: "로그인이 필요합니다." }, { status: 401 });
+    }
+  }
+
   const authenticated = await verifySessionToken(
     request.cookies.get(SESSION_COOKIE_NAME)?.value,
     process.env.AUTH_SECRET,
