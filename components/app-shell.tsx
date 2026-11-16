@@ -11,7 +11,6 @@ import {
   CirclePlus,
   CreditCard,
   Landmark,
-  LayoutDashboard,
   LogOut,
   Menu,
   PiggyBank,
@@ -33,10 +32,9 @@ type Scope = {
 };
 
 const nav = [
-  { href: "/", label: "Overview", icon: LayoutDashboard },
+  { href: "/", label: "보고서", icon: BarChart3 },
   { href: "/transactions", label: "거래 내역", icon: CreditCard },
   { href: "/balance", label: "잔고", icon: WalletCards },
-  { href: "/reports", label: "보고서", icon: BarChart3 },
   { href: "/savings", label: "저축 내역", icon: PiggyBank },
   { href: "/settings", label: "가계부 설정", icon: Settings },
 ];
@@ -122,7 +120,7 @@ export function AppShell({
   const isAccountScoped = pathname !== "/balance";
   const showHeaderControls =
     pathname === "/transactions" ||
-    pathname === "/reports" ||
+    pathname === "/" ||
     pathname === "/balance";
   const updateSelected = (next: string[]) => {
     setSelected(next);
@@ -326,7 +324,8 @@ export function AppShell({
         </Link>
       )}
       <nav className="mobile-tabs">
-        {[nav[0], nav[1], nav[3]].map(({ href, label, icon: Icon }) => (
+        {/* 보고서 · 거래 내역 · 잔고 */}
+        {nav.slice(0, 3).map(({ href, label, icon: Icon }) => (
           <Link
             key={href}
             href={href}

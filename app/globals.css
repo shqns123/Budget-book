@@ -1570,6 +1570,7 @@ a {
   display: grid;
   grid-template-columns: 1.35fr 0.8fr;
   gap: 16px;
+  margin-bottom: 70px;
 }
 .report-surface {
   padding: 29px;
@@ -1714,8 +1715,9 @@ a {
 .top-expenses > div b {
   font-weight: 500;
 }
+/* Sits above 분류별 지출 now; the grid below keeps the page's bottom margin. */
 .fixed-report {
-  margin-bottom: 70px;
+  margin-bottom: 16px;
   background: var(--ink);
   color: #fff;
   border: 0;
