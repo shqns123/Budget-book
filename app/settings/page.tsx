@@ -12,6 +12,7 @@ import {
   X,
 } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
+import { MembersPanel } from "@/components/members-panel";
 import { type MonthlyBudget } from "@/lib/budgets";
 import { readSharedState, saveSharedState } from "@/lib/shared-state";
 import {
@@ -72,7 +73,7 @@ export default function SettingsPage() {
   const [startYear, setStartYear] = useState(initialSettings.startYear);
   const [fiscalMonth, setFiscalMonth] = useState(initialSettings.fiscalMonth);
   const [view, setView] = useState<
-    "accounts" | "categories" | "budgets" | "recurring"
+    "accounts" | "categories" | "budgets" | "recurring" | "members"
   >("accounts");
   const [budgets, setBudgets] = useState<MonthlyBudget[]>([]);
   const [recurring, setRecurring] = useState<RecurringExpenseTemplate[]>([]);
@@ -374,7 +375,7 @@ export default function SettingsPage() {
               onClick={() => setView("categories")}
               className={view === "categories" ? "chosen" : ""}
             >
-              카테고리 · 고정비
+              카테고리
             </button>
             <button
               onClick={() => setView("budgets")}
@@ -388,8 +389,16 @@ export default function SettingsPage() {
             >
               반복 지출
             </button>
+            <button
+              onClick={() => setView("members")}
+              className={view === "members" ? "chosen" : ""}
+            >
+              멤버
+            </button>
           </div>
-          {view === "accounts" ? (
+          {view === "members" ? (
+            <MembersPanel />
+          ) : view === "accounts" ? (
             <section className="setting-table">
               <header>
                 <h2>계좌와 시작 잔액</h2>

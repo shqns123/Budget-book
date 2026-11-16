@@ -10,15 +10,26 @@ export function hasValidCredentials(username: string, password: string) {
   return supplied.length === expected.length && timingSafeEqual(supplied, expected);
 }
 
-export function isAuthConfigured() {
-  return Boolean(
-    process.env.AUTH_USERNAME &&
-      process.env.AUTH_PASSWORD &&
-      process.env.AUTH_SECRET &&
-      process.env.AUTH_SECRET.length >= 32,
-  );
+/** The signing secret is set (needed by every way of signing in). */
+export function hasSecret() {
+  return Boolean(process.env.AUTH_SECRET && process.env.AUTH_SECRET.length >= 32);
 }
 
-export async function issueSessionToken() {
-  return createSessionToken(process.env.AUTH_SECRET!);
+/** The ID / password login (kept as a fallback to Google sign-in) is set up. */
+export function isPasswordLoginConfigured() {
+  return hasSecret() && Boolean(process.env.AUTH_USERNAME && process.env.AUTH_PASSWORD);
+}
+
+/** Google sign-in is set up: a web client ID and the owner's Google address. */
+export function isGoogleLoginConfigured() {
+  return hasSecret() && Boolean(process.env.GOOGLE_CLIENT_ID && process.env.OWNER_EMAIL);
+}
+
+export function isAuthConfigured() {
+  return isPasswordLoginConfigured() || isGoogleLoginConfigured();
+}
+
+/** A session for `email` (Google sign-in), or for the owner (ID / password login). */
+export async function issueSessionToken(email?: string | null) {
+  return createSessionToken(process.env.AUTH_SECRET!, email ?? process.env.OWNER_EMAIL ?? null);
 }

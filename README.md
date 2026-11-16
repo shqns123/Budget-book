@@ -28,6 +28,20 @@ docker compose up --build
 - NAS의 `data/ledger.db`에 저장되는 공용 거래·예산·반복 항목·저축 계획·설정
 - 은행 앱 화면이나 영수증 사진에서 여러 거래를 추출하고 검토 후 일괄 등록
 
+## Google 로그인과 멤버
+
+로그인은 Google 계정으로 해요. 소유자(`OWNER_EMAIL`)와 소유자가 **설정 → 멤버**(앱: 전체 → 멤버)에서 초대한 Gmail만 들어올 수 있고, 모두 같은 가계부를 보고 편집해요. 초대와 내보내기는 소유자만 할 수 있고, 내보낸 멤버는 다음 요청부터 막혀요. 기존 아이디·비밀번호 로그인은 로그인 화면의 "아이디로 로그인" 링크로 남아 있어요(소유자로 로그인).
+
+Google Cloud Console(캘린더 앱과 같은 프로젝트를 써도 돼요) → API 및 서비스 → 사용자 인증 정보에서 OAuth 클라이언트 ID를 만들어요.
+
+| 종류 | 설정 | 쓰는 곳 |
+|---|---|---|
+| 웹 애플리케이션 | 승인된 JavaScript 원본: `https://<가계부 주소>` | 서버 `.env`의 `GOOGLE_CLIENT_ID`, 앱의 `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID` |
+| Android | 패키지 `com.budgetbook.mobile`, SHA-1: 릴리스 키(EAS 키스토어) | 정식 앱 |
+| Android | 패키지 `com.budgetbook.mobile.dev`, SHA-1: 디버그 키 | 개발용 앱 |
+
+SHA-1은 `keytool -list -v -keystore <키스토어>`로 확인해요(디버그 키: `mobile/android/app/debug.keystore`, 비밀번호 `android`). Android 클라이언트 ID는 어디에도 넣지 않아요. Google이 패키지와 서명으로 앱을 알아봐요.
+
 ## 사진으로 거래 불러오기
 
 OpenRouter에서 API 키를 만든 뒤 `.env`에 다음 값을 추가합니다.

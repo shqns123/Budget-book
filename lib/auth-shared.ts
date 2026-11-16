@@ -39,21 +39,37 @@ function sameBytes(left: Uint8Array, right: Uint8Array) {
   return difference === 0;
 }
 
-export async function createSessionToken(secret: string) {
+/** Who a session belongs to. `email` is null for tokens from before Google sign-in (the owner). */
+export type Session = { email: string | null };
+
+const encodeEmail = (email: string) => base64Url(encoder.encode(email));
+const decodeEmail = (value: string) => new TextDecoder().decode(fromBase64Url(value));
+
+/**
+ * `<expiresAt>[~<email>].<signature>`: the signed payload carries who signed in (Google sign-in),
+ * so the server can check membership on every request.
+ */
+export async function createSessionToken(secret: string, email?: string | null) {
   const expiresAt = Math.floor(Date.now() / 1000) + SESSION_MAX_AGE_SECONDS;
-  const payload = String(expiresAt);
+  const payload = email ? `${expiresAt}~${encodeEmail(email.toLowerCase())}` : String(expiresAt);
   return `${payload}.${base64Url(await sign(payload, secret))}`;
 }
 
-export async function verifySessionToken(token: string | undefined, secret: string | undefined) {
-  if (!token || !secret) return false;
+export async function verifySessionToken(
+  token: string | undefined,
+  secret: string | undefined,
+): Promise<Session | null> {
+  if (!token || !secret) return null;
   const [payload, signature, ...rest] = token.split(".");
-  if (!payload || !signature || rest.length) return false;
-  const expiresAt = Number(payload);
-  if (!Number.isSafeInteger(expiresAt) || expiresAt <= Date.now() / 1000) return false;
+  if (!payload || !signature || rest.length) return null;
+  const [expiry, email, ...extra] = payload.split("~");
+  if (extra.length) return null;
+  const expiresAt = Number(expiry);
+  if (!Number.isSafeInteger(expiresAt) || expiresAt <= Date.now() / 1000) return null;
   try {
-    return sameBytes(fromBase64Url(signature), await sign(payload, secret));
+    if (!sameBytes(fromBase64Url(signature), await sign(payload, secret))) return null;
+    return { email: email ? decodeEmail(email) : null };
   } catch {
-    return false;
+    return null;
   }
 }

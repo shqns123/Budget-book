@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requireViewer } from "@/lib/members";
 import { isStateKey, readState, writeState } from "@/lib/sqlite-state";
 
 export const runtime = "nodejs";
@@ -6,7 +7,10 @@ export const dynamic = "force-dynamic";
 
 type RouteContext = { params: Promise<{ key: string }> };
 
-export async function GET(_: Request, { params }: RouteContext) {
+export async function GET(request: Request, { params }: RouteContext) {
+  // Only the owner and invited members (checked on every request, so removal takes effect).
+  const viewer = await requireViewer(request);
+  if (viewer instanceof NextResponse) return viewer;
   const { key } = await params;
   if (!isStateKey(key)) {
     return NextResponse.json({ error: "Unknown state" }, { status: 404 });
@@ -15,6 +19,8 @@ export async function GET(_: Request, { params }: RouteContext) {
 }
 
 export async function PUT(request: Request, { params }: RouteContext) {
+  const viewer = await requireViewer(request);
+  if (viewer instanceof NextResponse) return viewer;
   const { key } = await params;
   if (!isStateKey(key)) {
     return NextResponse.json({ error: "Unknown state" }, { status: 404 });

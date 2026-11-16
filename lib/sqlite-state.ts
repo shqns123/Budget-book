@@ -120,3 +120,34 @@ export async function writeState(key: keyof typeof defaults, value: unknown) {
     });
   return writeQueue;
 }
+
+/**
+ * Server-only values kept in the same table under keys the state API never serves (it only
+ * accepts the keys in `defaults`), e.g. the member list.
+ */
+export async function readPrivateState<T>(key: `__${string}`, fallback: T): Promise<T> {
+  const db = await getDatabase();
+  const result = db.exec("SELECT value FROM app_state WHERE key = ?", [key]);
+  const raw = result[0]?.values[0]?.[0];
+  if (!raw) return fallback;
+  try {
+    return JSON.parse(String(raw)) as T;
+  } catch {
+    return fallback;
+  }
+}
+
+export async function writePrivateState(key: `__${string}`, value: unknown) {
+  writeQueue = writeQueue
+    .catch(() => undefined)
+    .then(async () => {
+      const db = await getDatabase();
+      db.run(
+        `INSERT INTO app_state (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP`,
+        [key, JSON.stringify(value)],
+      );
+      persist(db);
+    });
+  return writeQueue;
+}

@@ -3369,6 +3369,11 @@ a {
 .login-card button { display: flex; justify-content: center; align-items: center; gap: 8px; margin-top: 8px; padding: 13px; border: 0; border-radius: 10px; background: var(--ink); color: #fff; font-weight: 700; }
 .login-card button:disabled { opacity: .6; }
 .login-error { margin: 0; color: #b3432f; font-size: 13px; }
+/* Google's own button (rendered by Google Identity Services), centered in the card. */
+.login-google { display: flex; justify-content: center; min-height: 44px; margin-top: 8px; }
+.login-google[aria-busy="true"] { opacity: .6; pointer-events: none; }
+/* The owner's fallback: a quiet text link, not a second primary button. */
+.login-card button.login-fallback { margin-top: 0; padding: 6px; background: transparent; color: var(--slate); font-weight: 500; font-size: 12px; text-decoration: underline; text-underline-offset: 3px; }
 @media (max-width: 800px) {
   .ledger-context-controls {
     gap: 5px;
@@ -3425,4 +3430,43 @@ a {
     min-height: 46px;
     font-size: 16px;
   }
+}
+
+/* Settings → 멤버 */
+.members-table > header p { margin: 6px 0 0; color: var(--slate); font-size: 13px; }
+.member-row {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr) auto auto;
+  gap: 10px;
+  align-items: center;
+  padding: 12px 0;
+  border-top: 1px solid #eee;
+  font-size: 14px;
+}
+.member-row span:nth-child(2) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.member-row small { color: var(--slate); font-size: 11px; }
+.member-row svg { color: var(--sienna); }
+.member-row button { border: 0; background: transparent; color: var(--slate); cursor: pointer; }
+.member-dot { width: 8px; height: 8px; margin-left: 4px; border-radius: 50%; background: var(--peach); }
+.member-empty { color: var(--slate); font-size: 13px; }
+.member-invite { display: flex; gap: 8px; margin-top: 14px; }
+.member-invite input {
+  flex: 1;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid #e1d8d2;
+  border-radius: 10px;
+  font-size: 14px;
+}
+.member-invite button {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  padding: 10px 14px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--peach);
+  color: var(--sienna);
+  font-weight: 700;
+  cursor: pointer;
 }

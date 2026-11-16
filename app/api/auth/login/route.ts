@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import {
   hasValidCredentials,
-  isAuthConfigured,
+  isPasswordLoginConfigured,
   issueSessionToken,
 } from "@/lib/auth-server";
 import { SESSION_COOKIE_NAME, SESSION_MAX_AGE_SECONDS } from "@/lib/auth-shared";
@@ -10,7 +10,8 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
-  if (!isAuthConfigured()) {
+  // The ID / password login is the owner's fallback to Google sign-in.
+  if (!isPasswordLoginConfigured()) {
     return NextResponse.json(
       { error: "로그인 설정이 완료되지 않았습니다." },
       { status: 503 },

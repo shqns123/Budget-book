@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requireViewer } from "@/lib/members";
 import type { ImageTransactionAnalysis } from "@/lib/transaction-image";
 
 export const runtime = "nodejs";
@@ -177,6 +178,8 @@ function parseAnalysisContent(content: string) {
 }
 
 export async function POST(request: Request) {
+  const viewer = await requireViewer(request);
+  if (viewer instanceof NextResponse) return viewer;
   if (isRateLimited(request)) {
     return NextResponse.json(
       { error: "사진 분석 요청이 너무 많습니다. 잠시 후 다시 시도해 주세요." },

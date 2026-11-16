@@ -17,12 +17,14 @@ export async function middleware(request: NextRequest) {
   // The native app sends its session token as a bearer header instead of a cookie.
   const bearer = request.headers.get("authorization")?.match(/^Bearer\s+(.+)$/i)?.[1];
   if (bearer) {
-    if (await verifySessionToken(bearer, process.env.AUTH_SECRET)) {
-      // Sliding session for the app: hand back a fresh token on every request.
+    const session = await verifySessionToken(bearer, process.env.AUTH_SECRET);
+    if (session) {
+      // Sliding session for the app: hand back a fresh token on every request. (Membership is
+      // checked by the API routes, which can read the database.)
       const response = NextResponse.next();
       response.headers.set(
         "x-session-token",
-        await createSessionToken(process.env.AUTH_SECRET!),
+        await createSessionToken(process.env.AUTH_SECRET!, session.email),
       );
       return response;
     }
@@ -41,7 +43,7 @@ export async function middleware(request: NextRequest) {
     const response = NextResponse.next();
     response.cookies.set(
       SESSION_COOKIE_NAME,
-      await createSessionToken(process.env.AUTH_SECRET!),
+      await createSessionToken(process.env.AUTH_SECRET!, authenticated.email),
       {
         httpOnly: true,
         sameSite: "lax",
