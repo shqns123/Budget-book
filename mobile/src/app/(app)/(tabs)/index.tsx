@@ -233,7 +233,9 @@ function YearlyReport() {
               key={r.month}
               first={index === 0}
               title={`${r.month}월`}
-              meta={`수입 +${won(r.income)} · 지출 −${won(r.expense)}`}
+              meta={`수입 +${won(r.income)}
+지출 −${won(r.expense)}`}
+              metaLines={2}
               trailing={`${net >= 0 ? "+" : "−"}${won(net)}`}
               trailingColor={net >= 0 ? "income" : "expense"}
             />
@@ -436,7 +438,7 @@ function MetricGrid({
             <Text variant="footnote" color="text2">
               {item.label}
             </Text>
-            <Text variant="headline" color={color} tabular numberOfLines={1}>
+            <Text variant="headline" color={color} tabular numberOfLines={1} style={styles.metricValue}>
               {item.percentage ? `${item.value}%` : `${item.value > 0 ? "+" : item.value < 0 ? "−" : ""}${won(item.value)}`}
             </Text>
           </View>
@@ -455,6 +457,8 @@ const styles = StyleSheet.create({
     padding: space.lg,
     gap: space.xs,
   },
+  // headline 17px less 2px, so year totals fit the half-width card.
+  metricValue: { fontSize: 15, lineHeight: 22 },
   barInset: { paddingHorizontal: space.rowX, paddingBottom: space.md, marginTop: -space.xs },
   chart: { flexDirection: "row", alignItems: "flex-end", height: CHART_HEIGHT, gap: 2 },
   column: { flex: 1, alignItems: "center", gap: space.xs, justifyContent: "flex-end" },

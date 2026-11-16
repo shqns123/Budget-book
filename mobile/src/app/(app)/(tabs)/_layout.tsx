@@ -126,7 +126,8 @@ type TabButtonProps = TabTriggerSlotProps & {
 // The trigger passes its ref and press handlers through props (asChild).
 function TabButton({ label, icon, isFocused, onPress, ...props }: TabButtonProps) {
   const { c } = useTheme();
-  const color = isFocused ? c.primaryText : c.text2;
+  // The current tab sits on a peach pill (the brand colour, as on the + button).
+  const color = isFocused ? c.onPrimaryContainer : c.text2;
   return (
     <Pressable
       {...(props as PressableProps)}
@@ -140,14 +141,16 @@ function TabButton({ label, icon, isFocused, onPress, ...props }: TabButtonProps
       accessibilityState={{ selected: isFocused }}
       style={({ pressed }) => [styles.tab, pressed && { opacity: opacity.tabPressed }]}
     >
-      <TabIcon name={icon} color={color} />
-      <Text
-        variant="tabLabel"
-        style={{ color, fontWeight: isFocused ? "700" : "500" }}
-        numberOfLines={1}
-      >
-        {label}
-      </Text>
+      <View style={[styles.tabInner, isFocused && { backgroundColor: c.primaryContainer }]}>
+        <TabIcon name={icon} color={color} />
+        <Text
+          variant="tabLabel"
+          style={{ color, fontWeight: isFocused ? "700" : "500" }}
+          numberOfLines={1}
+        >
+          {label}
+        </Text>
+      </View>
     </Pressable>
   );
 }
@@ -172,7 +175,14 @@ const styles = StyleSheet.create({
     height: "100%",
     alignItems: "center",
     justifyContent: "center",
+  },
+  tabInner: {
+    alignItems: "center",
+    justifyContent: "center",
     gap: 2,
+    paddingHorizontal: space.md,
+    paddingVertical: 5,
+    borderRadius: radius.pill,
   },
   fab: {
     width: size.fab,

@@ -71,6 +71,7 @@ export function Row({
   dimmed,
   badge,
   dense,
+  metaLines = 1,
 }: {
   title: string;
   meta?: string;
@@ -78,6 +79,9 @@ export function Row({
   badge?: ReactNode;
   /** Title and trailing meta 2px smaller (long lists such as the transaction list). */
   dense?: boolean;
+  /** Lines the meta may take (break them with "
+"). */
+  metaLines?: number;
   icon?: IconName;
   iconTone?: "neutral" | "income" | "expense" | "accent" | "danger";
   trailing?: ReactNode | string;
@@ -116,7 +120,7 @@ export function Row({
           {title}
         </Text>
         {meta ? (
-          <Text variant="footnote" color="text2" weight="400" numberOfLines={1}>
+          <Text variant="footnote" color="text2" weight="400" numberOfLines={metaLines}>
             {meta}
           </Text>
         ) : null}

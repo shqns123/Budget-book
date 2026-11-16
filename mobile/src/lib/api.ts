@@ -67,7 +67,8 @@ export async function apiFetch(path: string, init: RequestInit = {}) {
   // Sliding session: the server hands back a fresh token on every use.
   const refreshed = response.headers.get("x-session-token");
   if (refreshed && refreshed !== token) void storeToken(refreshed);
-  if (response.status === 401 && token) {
+  // 401: signed out. 403 on the ledger data: no longer a member (the owner removed them).
+  if (token && (response.status === 401 || (response.status === 403 && path.startsWith("/api/state/")))) {
     await storeToken("");
     onUnauthorized?.();
   }
@@ -83,15 +84,25 @@ export async function apiJson<T>(path: string, init?: RequestInit): Promise<T> {
   return payload;
 }
 
-export async function login(server: string, username: string, password: string) {
+/** ID / password login: the owner's fallback to Google sign-in. */
+export function login(server: string, username: string, password: string) {
+  return signInWith(server, "/api/auth/login", { username, password });
+}
+
+/** Google sign-in with an ID token from Google Sign-In (lib/google). */
+export function loginWithGoogle(server: string, idToken: string) {
+  return signInWith(server, "/api/auth/google", { idToken });
+}
+
+async function signInWith(server: string, path: string, body: Record<string, string>) {
   const url = SERVER_LOCKED ? BUILT_IN_SERVER : normalizeServerUrl(server);
   if (!url) throw new ApiError("서버 주소를 입력해 주세요.", 0);
   let response: Response;
   try {
-    response = await fetch(`${url}/api/auth/login`, {
+    response = await fetch(`${url}${path}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ username, password, client: "native" }),
+      body: JSON.stringify({ ...body, client: "native" }),
     });
   } catch {
     throw new ApiError("서버에 연결하지 못했어요. 주소를 다시 확인해 주세요.", 0);

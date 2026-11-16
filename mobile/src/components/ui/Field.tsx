@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useState, type ComponentProps, type ComponentRef, type ReactNode, type Ref } from "react";
 import {
   Pressable,
   StyleSheet,
@@ -36,8 +36,16 @@ export function TextField({
   style,
   suffix,
   compact,
+  inputRef,
   ...props
-}: TextInputProps & { label?: string; style?: ViewStyle; suffix?: string; compact?: boolean }) {
+}: TextInputProps & {
+  label?: string;
+  style?: ViewStyle;
+  suffix?: string;
+  compact?: boolean;
+  /** To focus the input from outside. */
+  inputRef?: Ref<ComponentRef<typeof TextInput>>;
+}) {
   const { c } = useTheme();
   const [focused, setFocused] = useState(false);
   return (
@@ -50,6 +58,7 @@ export function TextField({
         ]}
       >
         <TextInput
+          ref={inputRef}
           placeholderTextColor={c.muted}
           accessibilityLabel={label ?? props.accessibilityLabel}
           {...props}
@@ -82,6 +91,7 @@ export function MoneyField({
   style,
   compact,
   accessibilityLabel,
+  ...keys
 }: {
   value: string | number;
   onChange: (digits: string) => void;
@@ -90,9 +100,10 @@ export function MoneyField({
   style?: ViewStyle;
   compact?: boolean;
   accessibilityLabel?: string;
-}) {
+} & Pick<ComponentProps<typeof TextField>, "inputRef" | "returnKeyType" | "onSubmitEditing" | "submitBehavior">) {
   return (
     <TextField
+      {...keys}
       label={label}
       style={style}
       compact={compact}

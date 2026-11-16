@@ -1,18 +1,18 @@
 import { ImageManipulator, SaveFormat } from "expo-image-manipulator";
 import * as ImagePicker from "expo-image-picker";
-import { useMemo, useState, type ComponentProps } from "react";
-import { Pressable, StyleSheet, View } from "react-native";
+import { useMemo, useRef, useState, type ComponentProps, type ComponentRef } from "react";
+import { Pressable, StyleSheet, View, type TextInput } from "react-native";
 import { useScopeSelection } from "@/components/ledger/ScopeControls";
 import {
   Banner,
   DateField,
   FieldRow,
+  FoldSection,
   Icon,
   IconButton,
   MoneyField,
   LoadingView,
   Popup,
-  SecondaryButton,
   Section,
   Segmented,
   SelectField,
@@ -21,16 +21,16 @@ import {
   TextButton,
   TextField,
   PopupActions,
+  PopupTool,
 } from "@/components/ui";
 import { apiFetch } from "@/lib/api";
-import { closeCompose, finishCompose, useCompose } from "@/lib/compose";
+import { closeCompose, finishCompose, lastComposeDate, rememberComposeDate, useCompose } from "@/lib/compose";
 import { todayIso } from "@/lib/dates";
 import {
   categoryOptions,
   isDebtAccount,
   linkedTransfer,
   newId,
-  typeLabel,
   type RecurringTemplate,
   type Transaction,
   type TransactionType,
@@ -120,7 +120,7 @@ function useInitialForm(params: Params) {
       type: "expense" as TransactionType,
       name: "",
       amount: "",
-      date: isIsoDate(params.date) ? params.date! : todayIso(),
+      date: isIsoDate(params.date) ? params.date! : (lastComposeDate() ?? todayIso()),
       accountId: from,
       toAccountId: accounts.find((a) => a.id !== from)?.id ?? "",
       category,
@@ -167,6 +167,10 @@ function ComposeForm({ params, popup }: { params: Params; popup: PopupFrame }) {
   const [linkTo, setLinkTo] = useState(link.to);
   const [formError, setFormError] = useState("");
   const [saving, setSaving] = useState(false);
+
+  // 금액's keypad "next" moves on to 내용 (nothing is focused when the popup opens).
+  const amountRef = useRef<ComponentRef<typeof TextInput>>(null);
+  const nameRef = useRef<ComponentRef<typeof TextInput>>(null);
   const [recurringBatch, setRecurringBatch] = useState<RecurringTemplate[] | null>(null);
   const [imageBatch, setImageBatch] = useState<ImageDraft[] | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
@@ -371,22 +375,13 @@ function ComposeForm({ params, popup }: { params: Params; popup: PopupFrame }) {
     }
   };
 
-  const isRepayment = type === "transfer" && isDebtAccount(accounts, toAccountId);
-  const saveLabel = editing
-    ? "거래 수정 저장"
-    : type === "transfer"
-      ? isRepayment
-        ? "상환 이동 기록"
-        : "이동 기록"
-      : type === "expense"
-        ? "지출 기록하기"
-        : "수입 기록하기";
+  const saveLabel = "저장";
   const batchOpen = Boolean(imageBatch || recurringBatch);
   // The floating bar's main action follows what the popup shows.
   const action = imageBatch
-    ? { label: `${imageBatch.length}건 일괄 등록`, onPress: registerImages, disabled: !imageBatch.length }
+    ? { label: "등록", onPress: registerImages, disabled: !imageBatch.length }
     : recurringBatch
-      ? { label: `${recurringBatch.length}건 일괄 등록`, onPress: registerRecurring, disabled: !recurringBatch.length }
+      ? { label: "등록", onPress: registerRecurring, disabled: !recurringBatch.length }
       : { label: saveLabel, onPress: submit, disabled: false };
 
   return (
@@ -399,30 +394,37 @@ function ComposeForm({ params, popup }: { params: Params; popup: PopupFrame }) {
           onPress={() => void action.onPress()}
           loading={saving}
           disabled={action.disabled}
+          tools={
+            editing ? null : (
+              <>
+                <PopupTool
+                  icon="image"
+                  label="사진에서 거래 불러오기 (최대 5장)"
+                  busy={analyzing}
+                  disabled={!accounts.length}
+                  onPress={() => void pickImages()}
+                />
+                {data.recurring.length > 0 && (
+                  <PopupTool
+                    icon="repeat"
+                    label={recurringBatch ? "반복 항목 일괄 등록 닫기" : "반복 항목 일괄 등록"}
+                    active={Boolean(recurringBatch)}
+                    onPress={() => {
+                      // Pressed again, it goes back to the record form.
+                      if (recurringBatch) return setRecurringBatch(null);
+                      setImageBatch(null);
+                      setRecurringBatch(data.recurring.map((item) => ({ ...item })));
+                    }}
+                  />
+                )}
+              </>
+            )
+          }
         />
       }
     >
-      {!editing && (
-        <View style={{ gap: space.md }}>
-          <SecondaryButton
-            icon="image"
-            label={analyzing ? "사진에서 거래를 읽고 있어요" : "사진에서 거래 불러오기 (최대 5장)"}
-            disabled={analyzing || !accounts.length}
-            onPress={() => void pickImages()}
-          />
-          {data.recurring.length > 0 && (
-            <SecondaryButton
-              icon="repeat"
-              label="반복 항목 일괄 등록"
-              onPress={() => {
-                setImageBatch(null);
-                setRecurringBatch(data.recurring.map((item) => ({ ...item })));
-              }}
-            />
-          )}
-          {imageError ? <Banner message={imageError} /> : null}
-        </View>
-      )}
+      {analyzing ? <Banner tone="info" message="사진에서 거래를 읽고 있어요." /> : null}
+      {imageError ? <Banner message={imageError} /> : null}
 
       {imageBatch && (
         <Section
@@ -521,53 +523,61 @@ function ComposeForm({ params, popup }: { params: Params; popup: PopupFrame }) {
             <Text variant="footnote" weight="400" color="text2">
               이번 달에 등록할 항목만 남기고 내용을 수정한 뒤 일괄 등록하세요.
             </Text>
+            {/* Each item folds open to edit; the trash on its side leaves it out of this month. */}
             {recurringBatch.map((item) => (
-              <View key={item.id} style={[styles.draft, { backgroundColor: c.bg }]}>
-                <View style={styles.draftHead}>
-                  <Tag label={typeLabel(item.type ?? "expense")} tone="accent" />
-                  <View style={{ flex: 1 }} />
-                  <TextButton
-                    label="제외"
+              <FoldSection
+                key={item.id}
+                inset
+                padded
+                smallTitle
+                title={item.name || "이름 없음"}
+                right={
+                  <IconButton
+                    icon="trash"
                     tone="danger"
+                    label={`${item.name} 제외`}
                     onPress={() => setRecurringBatch((rows) => rows?.filter((r) => r.id !== item.id) ?? null)}
                   />
-                </View>
-                <TextField
-                  label="내용"
-                  value={item.name}
-                  onChangeText={(text) =>
-                    setRecurringBatch((rows) => rows?.map((r) => (r.id === item.id ? { ...r, name: text } : r)) ?? null)
-                  }
-                />
-                <FieldRow>
-                  <MoneyField
-                    label="금액"
-                    compact
-                    value={item.amount}
-                    onChange={(digits) =>
-                      setRecurringBatch(
-                        (rows) => rows?.map((r) => (r.id === item.id ? { ...r, amount: Number(digits) } : r)) ?? null,
-                      )
-                    }
-                  />
+                }
+              >
+                <View style={{ gap: space.md }}>
                   <TextField
-                    label="일자"
-                    compact
-                    keyboardType="number-pad"
-                    value={String(item.day)}
-                    suffix="일"
-                    style={{ flex: 0.6 }}
+                    label="내용"
+                    value={item.name}
                     onChangeText={(text) =>
-                      setRecurringBatch(
-                        (rows) =>
-                          rows?.map((r) =>
-                            r.id === item.id ? { ...r, day: Number(text.replace(/[^0-9]/g, "")) || 1 } : r,
-                          ) ?? null,
-                      )
+                      setRecurringBatch((rows) => rows?.map((r) => (r.id === item.id ? { ...r, name: text } : r)) ?? null)
                     }
                   />
-                </FieldRow>
-              </View>
+                  <FieldRow>
+                    <MoneyField
+                      label="금액"
+                      compact
+                      value={item.amount}
+                      onChange={(digits) =>
+                        setRecurringBatch(
+                          (rows) => rows?.map((r) => (r.id === item.id ? { ...r, amount: Number(digits) } : r)) ?? null,
+                        )
+                      }
+                    />
+                    <TextField
+                      label="일자"
+                      compact
+                      keyboardType="number-pad"
+                      value={String(item.day)}
+                      suffix="일"
+                      style={{ flex: 0.6 }}
+                      onChangeText={(text) =>
+                        setRecurringBatch(
+                          (rows) =>
+                            rows?.map((r) =>
+                              r.id === item.id ? { ...r, day: Number(text.replace(/[^0-9]/g, "")) || 1 } : r,
+                            ) ?? null,
+                        )
+                      }
+                    />
+                  </FieldRow>
+                </View>
+              </FoldSection>
             ))}
           </View>
         </Section>
@@ -578,15 +588,34 @@ function ComposeForm({ params, popup }: { params: Params; popup: PopupFrame }) {
           <Segmented value={type} options={TYPE_OPTIONS} onChange={changeType} accessibilityLabel="거래 유형" />
           <Section padded>
             <View style={{ gap: space.lg }}>
-              <MoneyField label="금액" value={amount} onChange={setAmount} />
+              {/* 금액 → (keypad's next) 내용 → (done) 저장. */}
+              <MoneyField
+                label="금액"
+                value={amount}
+                onChange={setAmount}
+                inputRef={amountRef}
+                returnKeyType="next"
+                submitBehavior="submit"
+                onSubmitEditing={() => nameRef.current?.focus()}
+              />
               <TextField
                 label="내용"
                 value={name}
                 onChangeText={setName}
                 placeholder={type === "transfer" ? "예: 카드 결제" : "예: 점심 식사"}
                 autoCorrect={false}
+                inputRef={nameRef}
+                returnKeyType="done"
+                onSubmitEditing={() => void submit()}
               />
-              <DateField label="날짜" value={date} onChange={setDate} />
+              <DateField
+                label="날짜"
+                value={date}
+                onChange={(iso) => {
+                  setDate(iso);
+                  rememberComposeDate(iso);
+                }}
+              />
               {type === "transfer" ? (
                 <FieldRow>
                   <SelectField label="출금 통장" value={accountId} options={accountOptions} onChange={setAccountId} />

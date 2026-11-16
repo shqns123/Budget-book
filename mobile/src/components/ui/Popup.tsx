@@ -1,12 +1,24 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { Animated, BackHandler, Easing, Pressable, ScrollView, StyleSheet, View, useWindowDimensions } from "react-native";
+import {
+  ActivityIndicator,
+  Animated,
+  BackHandler,
+  Easing,
+  Keyboard,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  View,
+  useWindowDimensions,
+} from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useReducedMotion } from "@/lib/motion";
 import { useLedger } from "@/store/ledger-store";
 import { useTheme } from "@/theme/theme";
 import { radius, size, space } from "@/theme/tokens";
-import { IconButton, PrimaryButton, SecondaryButton, TextButton } from "./Button";
+import { IconButton, SecondaryButton, TextButton } from "./Button";
 import { Banner } from "./Controls";
+import { Icon, type IconName } from "./Icon";
 import { useKeyboardInset } from "./Keyboard";
 import { Text } from "./Text";
 
@@ -21,9 +33,9 @@ type Rect = { x: number; y: number; width: number; height: number };
  * the tab bar, so the bar stays on top.
  *
  * `from="fab"` grows it out of the tab bar's + button the way a chip grows into its menu: the card
- * (and the footer's action bar) start as the button itself (its place, size, round shape and
- * peach) and spring open to full size, the content appearing once there is room; closing shrinks
- * both back into the button. Otherwise it rises and fades in place.
+ * starts as the button itself (its place, size, round shape and peach) and springs open to full
+ * size, the content appearing once there is room; closing shrinks it back into the button.
+ * Otherwise it rises and fades in place.
  *
  * Controlled: `visible` false plays the closing animation, then `onClosed` (unmount it there).
  * The close button (or the footer's 취소), the scrim and Android back call `onRequestClose`.
@@ -44,8 +56,8 @@ export function Popup({
   onClosed: () => void;
   title: string;
   from?: "fab" | "center";
-  /** Actions in a floating bar where the tab bar sits (e.g. PopupActions). Replaces the × button;
-   * hide the tab bar while the popup is open. */
+  /** Actions in the card's bottom row (e.g. PopupActions). Replaces the × button; the card then
+   * reaches down over the tab bar's spot, so hide the tab bar while the popup is open. */
   footer?: ReactNode;
   children: ReactNode;
 }) {
@@ -80,6 +92,13 @@ export function Popup({
     return () => clearTimeout(t);
   }, [measured, visible, reduceMotion, progress]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Closing: let go of the focused field first. Android hands the focus of a field that is torn
+  // down to the first input it finds (the transactions tab's search box), which would then show a
+  // cursor; a field blurred beforehand (in touch mode) passes it to nobody.
+  useEffect(() => {
+    if (!visible) Keyboard.dismiss();
+  }, [visible]);
+
   useEffect(() => {
     if (!visible) return;
     const sub = BackHandler.addEventListener("hardwareBackPress", () => {
@@ -89,17 +108,20 @@ export function Popup({
     return () => sub.remove();
   }, [visible, onRequestClose]);
 
-  // --- Geometry. The action bar takes the tab bar's place (above the keyboard while it is up);
-  // the card sits above that bar.
+  // --- Geometry. With a footer the card reaches down to where the (hidden) tab bar sits and carries
+  // the actions in its bottom row; without one it sits above the tab bar. Above the keyboard while
+  // it is up.
   const tabBarBottom = insets.bottom + space.xs;
-  const barBottom = keyboard ? keyboard + space.sm : tabBarBottom;
-  const cardBottom = barBottom + size.tabbar + space.sm;
+  const cardBottom = keyboard
+    ? keyboard + space.sm
+    : footer
+      ? tabBarBottom
+      : tabBarBottom + size.tabbar + space.sm;
   const cardTop = insets.top + space.lg;
   const width = screenW - space.lg * 2;
   const maxHeight = screenH - cardTop - cardBottom;
   const cardH = Math.min(contentH, maxHeight);
   const card: Rect = { x: space.lg, y: screenH - cardBottom - cardH, width, height: cardH };
-  const bar: Rect = { x: space.lg, y: screenH - barBottom - size.tabbar, width, height: size.tabbar };
   const fab: Rect = {
     x: (screenW - size.fab) / 2,
     y: screenH - tabBarBottom - size.tabbar / 2 - size.fab / 2,
@@ -109,7 +131,6 @@ export function Popup({
   const fold = from === "fab";
   // Where each starts: the + button, or (in place) slightly lower.
   const cardStart = fold ? fab : { ...card, y: card.y + space.xl };
-  const barStart = fold ? fab : { ...bar, y: bar.y + space.lg };
 
   const grow = (start: Rect, end: Rect, endRadius: number, endColor: string) => ({
     left: progress.interpolate({ inputRange: [0, 1], outputRange: [start.x, end.x], extrapolateLeft: "clamp" }),
@@ -170,47 +191,97 @@ export function Popup({
             ) : null}
             {children}
           </ScrollView>
+          {/* Styled like the floating tab bar: a white pill with its shadow. */}
+          {footer ? <View style={[styles.footer, shadow("tabbar"), { backgroundColor: c.card }]}>{footer}</View> : null}
         </Animated.View>
       </Animated.View>
-      {footer ? (
-        <Animated.View
-          style={[styles.panel, shadow("tabbar"), grow(barStart, bar, radius.pill, c.card), !measured && { opacity: 0 }]}
-        >
-          <Animated.View style={[styles.barContent, { width, opacity: contentOpacity }]}>{footer}</Animated.View>
-        </Animated.View>
-      ) : null}
     </View>
   );
 }
 
-/** 취소 + the main action, for Popup's floating action bar. */
+/** 취소 + the main action (+ tools), for Popup's footer row. */
 export function PopupActions({
   onCancel,
   label,
   onPress,
   loading,
   disabled,
+  tools,
 }: {
   onCancel: () => void;
-  /** The main action; leave out for a bar with 취소 only. */
+  /** The main action (peach, the brand colour); leave out for a bar with 취소 only. */
   label?: string;
   onPress?: () => void;
   loading?: boolean;
   disabled?: boolean;
+  /** Round icon buttons after the main action (PopupTool). */
+  tools?: ReactNode;
 }) {
+  const { c } = useTheme();
   return (
     <>
-      <SecondaryButton label="취소" onPress={onCancel} style={styles.barButton} />
+      <SecondaryButton label="취소" onPress={onCancel} style={styles.barButton} labelStyle={styles.barLabel} />
       {label ? (
-        <PrimaryButton
-          label={label}
-          onPress={onPress}
-          loading={loading}
-          disabled={disabled}
-          style={{ ...styles.barButton, flex: 2 }}
-        />
+        loading ? (
+          <View
+            accessibilityLabel={`${label}, 저장 중`}
+            style={[styles.barButton, styles.barBusy, { flex: 1.6, backgroundColor: c.primaryContainer }]}
+          >
+            <ActivityIndicator color={c.onPrimaryContainer} />
+          </View>
+        ) : (
+          <SecondaryButton
+            tone="accent"
+            label={label}
+            onPress={onPress}
+            disabled={disabled}
+            style={{ ...styles.barButton, flex: 1.6 }}
+            labelStyle={styles.barLabel}
+          />
+        )
       ) : null}
+      {tools}
     </>
+  );
+}
+
+/** A round icon button for PopupActions' `tools`. */
+export function PopupTool({
+  icon,
+  label,
+  onPress,
+  disabled,
+  busy,
+  active,
+}: {
+  icon: IconName;
+  label: string;
+  onPress: () => void;
+  disabled?: boolean;
+  busy?: boolean;
+  /** Its mode is on (peach); pressing it again turns the mode off. */
+  active?: boolean;
+}) {
+  const { c } = useTheme();
+  return (
+    <Pressable
+      onPress={onPress}
+      disabled={disabled || busy}
+      accessibilityRole="button"
+      accessibilityLabel={busy ? `${label}, 진행 중` : label}
+      accessibilityState={{ disabled: disabled || busy, busy, selected: active }}
+      style={({ pressed }) => [
+        styles.tool,
+        { backgroundColor: active ? c.primaryContainer : pressed ? c.fill : c.subtle },
+        disabled && { opacity: 0.4 },
+      ]}
+    >
+      {busy ? (
+        <ActivityIndicator color={c.text2} />
+      ) : (
+        <Icon name={icon} size={22} color={active ? c.onPrimaryContainer : c.text} />
+      )}
+    </Pressable>
   );
 }
 
@@ -228,14 +299,23 @@ const styles = StyleSheet.create({
     gap: space.sm,
   },
   body: { paddingHorizontal: space.lg, paddingTop: space.xs, paddingBottom: space.lg, gap: space.xl },
-  barContent: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    height: size.tabbar,
-    padding: BAR_PAD,
+  footer: {
     flexDirection: "row",
     gap: BAR_PAD,
+    height: size.tabbar,
+    padding: BAR_PAD,
+    margin: space.sm,
+    borderRadius: radius.pill,
   },
   barButton: { flex: 1, minHeight: size.tabbar - BAR_PAD * 2, borderRadius: radius.pill },
+  barBusy: { alignItems: "center", justifyContent: "center" },
+  // headline 17px less 2px.
+  barLabel: { fontSize: 15, lineHeight: 20 },
+  tool: {
+    width: size.tabbar - BAR_PAD * 2,
+    height: size.tabbar - BAR_PAD * 2,
+    borderRadius: radius.pill,
+    alignItems: "center",
+    justifyContent: "center",
+  },
 });

@@ -39,6 +39,16 @@ export function closeCompose() {
   if (state.open) set({ ...state, open: false });
 }
 
+/**
+ * The date last picked in the form: a new record starts on it (entering several older receipts in
+ * a row), until the app restarts and it starts on today again.
+ */
+let lastDate: string | null = null;
+export const lastComposeDate = () => lastDate;
+export function rememberComposeDate(iso: string) {
+  lastDate = iso;
+}
+
 export function finishCompose(key: number) {
   if (!state.open && state.request?.key === key) set({ request: null, open: false });
 }

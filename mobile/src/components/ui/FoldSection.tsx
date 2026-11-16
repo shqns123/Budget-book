@@ -24,6 +24,7 @@ export function FoldSection({
   right,
   padded,
   inset,
+  smallTitle,
   children,
 }: {
   title: string;
@@ -35,6 +36,8 @@ export function FoldSection({
   padded?: boolean;
   /** A card nested inside another (canvas grey instead of white). */
   inset?: boolean;
+  /** Title at 15px instead of 17px (dense lists). */
+  smallTitle?: boolean;
   children: ReactNode;
 }) {
   const { c } = useTheme();
@@ -70,7 +73,11 @@ export function FoldSection({
           <Animated.View style={{ transform: [{ rotate }] }}>
             <Icon name="chevronDown" size={20} color={c.text2} />
           </Animated.View>
-          <Text variant="headline" numberOfLines={1} style={{ flexShrink: 1 }}>
+          <Text
+            variant="headline"
+            numberOfLines={1}
+            style={[{ flexShrink: 1 }, smallTitle && { fontSize: 15, lineHeight: 20 }]}
+          >
             {title}
           </Text>
           {meta ? (

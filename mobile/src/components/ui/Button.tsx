@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { ActivityIndicator, Pressable, StyleSheet, View, type ViewStyle } from "react-native";
+import { ActivityIndicator, Pressable, StyleSheet, View, type TextStyle, type ViewStyle } from "react-native";
 import { useTheme } from "@/theme/theme";
 import { opacity, radius, size, space } from "@/theme/tokens";
 import { Icon, type IconName } from "./Icon";
@@ -12,6 +12,8 @@ type ButtonProps = {
   disabled?: boolean;
   loading?: boolean;
   style?: ViewStyle;
+  /** Overrides for the label (e.g. a smaller size in a compact bar). */
+  labelStyle?: TextStyle;
   accessibilityLabel?: string;
 };
 
@@ -54,6 +56,7 @@ export function SecondaryButton({
   icon,
   disabled,
   style,
+  labelStyle,
   tone = "neutral",
   accessibilityLabel,
 }: ButtonProps & { tone?: "neutral" | "danger" | "accent" }) {
@@ -75,7 +78,7 @@ export function SecondaryButton({
       ]}
     >
       {icon && <Icon name={icon} size={20} color={fg} />}
-      <Text variant="headline" style={{ color: fg }}>
+      <Text variant="headline" style={[{ color: fg }, labelStyle]}>
         {label}
       </Text>
     </Pressable>

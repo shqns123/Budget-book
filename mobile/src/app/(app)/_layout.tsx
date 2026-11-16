@@ -12,6 +12,7 @@ export default function AppLayout() {
           <Stack.Screen name="(tabs)" />
           <Stack.Screen name="savings" />
           <Stack.Screen name="settings" />
+          <Stack.Screen name="members" />
         </Stack>
       </LedgerProvider>
     </PrefsProvider>
