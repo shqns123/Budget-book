@@ -1,167 +1,64 @@
-import { useEffect, useRef, useState, type ComponentRef, type ReactNode } from "react";
-import { Animated, Pressable, StyleSheet, View, type NativeScrollEvent, type NativeSyntheticEvent } from "react-native";
+import { useEffect, useState, type ReactNode } from "react";
+import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { useTheme } from "@/theme/theme";
-import { radius } from "@/theme/tokens";
+import { radius, size, space } from "@/theme/tokens";
+import { Icon } from "./Icon";
 import { Text } from "./Text";
 
 export type WheelItem<T extends string | number> = { value: T; label: string };
 
-const ITEM_H = 40;
-/** Rows on show: the picked one in the middle, two above and two below. */
-const VISIBLE = 5;
-const PAD = ((VISIBLE - 1) / 2) * ITEM_H;
-
-/**
- * An iOS-style wheel: a column that scrolls and snaps one row at a time, the picked row in the
- * middle band, the rows above and below turning away (smaller, fainter, tilted). Tapping a row
- * rolls to it. `onChange` fires once the wheel comes to rest.
- *
- * Uncontrolled after mount: `value` sets where it starts (remount it, with a key, to jump).
- */
-export function Wheel<T extends string | number>({
-  items,
-  value,
-  onChange,
-  flex = 1,
-  bare,
-  accessibilityLabel,
-}: {
+export function Wheel<T extends string | number>({ items, value, onChange, flex = 1, accessibilityLabel }: {
   items: WheelItem<T>[];
   value: T;
   onChange: (value: T) => void;
   flex?: number;
-  /** Leave out the middle band (WheelRow draws one band across its wheels). */
   bare?: boolean;
   accessibilityLabel: string;
 }) {
   const { c } = useTheme();
-  const start = Math.max(
-    0,
-    items.findIndex((item) => item.value === value),
-  );
-  const [index, setIndex] = useState(start);
-  const [scrollY] = useState(() => new Animated.Value(start * ITEM_H));
-  const listRef = useRef<ComponentRef<typeof Animated.ScrollView>>(null);
-  // A drag that ends without a fling settles on onScrollEndDrag; one with a fling, on
-  // onMomentumScrollEnd. The timer waits to see which.
-  const settleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(() => () => {
-    if (settleTimer.current) clearTimeout(settleTimer.current);
-  }, []);
-
-  const settle = (y: number) => {
-    const next = Math.min(items.length - 1, Math.max(0, Math.round(y / ITEM_H)));
-    setIndex(next);
-    if (items[next] && items[next].value !== items[index]?.value) onChange(items[next].value);
-  };
-  const rollTo = (next: number) => {
-    const target = Math.min(items.length - 1, Math.max(0, next));
-    listRef.current?.scrollTo({ y: target * ITEM_H, animated: true });
-    // Android doesn't report the end of a programmatic scroll: settle right away.
-    setIndex(target);
-    if (items[target] && target !== index) onChange(items[target].value);
-  };
-
+  const [selected, setSelected] = useState(value);
+  const [open, setOpen] = useState(false);
+  useEffect(() => setSelected(value), [value]);
+  const current = items.find((item) => item.value === selected);
   return (
-    <View
-      style={{ flex, height: ITEM_H * VISIBLE }}
-      accessible
-      accessibilityRole="adjustable"
-      accessibilityLabel={accessibilityLabel}
-      accessibilityValue={{ text: items[index]?.label }}
-      accessibilityActions={[{ name: "increment" }, { name: "decrement" }]}
-      onAccessibilityAction={(e) => rollTo(index + (e.nativeEvent.actionName === "increment" ? 1 : -1))}
-    >
-      {/* The middle band the picked row rests in. */}
-      {bare ? null : <View pointerEvents="none" style={[styles.band, { backgroundColor: c.card }]} />}
-      <Animated.ScrollView
-        ref={listRef}
-        showsVerticalScrollIndicator={false}
-        nestedScrollEnabled
-        snapToInterval={ITEM_H}
-        decelerationRate="fast"
-        contentOffset={{ x: 0, y: start * ITEM_H }}
-        contentContainerStyle={{ paddingVertical: PAD }}
-        scrollEventThrottle={16}
-        onScroll={Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], { useNativeDriver: true })}
-        onScrollBeginDrag={() => {
-          if (settleTimer.current) clearTimeout(settleTimer.current);
-        }}
-        onScrollEndDrag={(e: NativeSyntheticEvent<NativeScrollEvent>) => {
-          const y = e.nativeEvent.contentOffset.y;
-          settleTimer.current = setTimeout(() => settle(y), 120);
-        }}
-        onMomentumScrollBegin={() => {
-          if (settleTimer.current) clearTimeout(settleTimer.current);
-        }}
-        onMomentumScrollEnd={(e: NativeSyntheticEvent<NativeScrollEvent>) => settle(e.nativeEvent.contentOffset.y)}
+    <View style={{ flex, minWidth: 0 }}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`${accessibilityLabel}, ${current?.label ?? "선택"}`}
+        accessibilityState={{ expanded: open }}
+        onPress={() => setOpen(!open)}
+        style={[styles.control, { backgroundColor: c.card, borderColor: c.outline }]}
       >
-        {items.map((item, i) => {
-          const at = i * ITEM_H;
-          const range = [at - PAD, at - ITEM_H, at, at + ITEM_H, at + PAD];
-          return (
-            <Pressable key={String(item.value)} onPress={() => rollTo(i)} importantForAccessibility="no">
-              <Animated.View
-                style={[
-                  styles.item,
-                  {
-                    opacity: scrollY.interpolate({
-                      inputRange: range,
-                      outputRange: [0.25, 0.5, 1, 0.5, 0.25],
-                      extrapolate: "clamp",
-                    }),
-                    transform: [
-                      { perspective: 600 },
-                      {
-                        rotateX: scrollY.interpolate({
-                          inputRange: range,
-                          outputRange: ["-50deg", "-25deg", "0deg", "25deg", "50deg"],
-                          extrapolate: "clamp",
-                        }),
-                      },
-                      {
-                        scale: scrollY.interpolate({
-                          inputRange: range,
-                          outputRange: [0.86, 0.94, 1, 0.94, 0.86],
-                          extrapolate: "clamp",
-                        }),
-                      },
-                    ],
-                  },
-                ]}
-              >
-                <Text variant="headline" weight={i === index ? "700" : "500"} tabular numberOfLines={1}>
-                  {item.label}
-                </Text>
-              </Animated.View>
+        <Text variant="body" numberOfLines={1} style={{ flex: 1 }}>{current?.label ?? "선택"}</Text>
+        <Icon name={open ? "moveUp" : "chevronDown"} size={20} color={c.text2} />
+      </Pressable>
+      {open && (
+        <ScrollView nestedScrollEnabled style={[styles.list, { backgroundColor: c.card, borderColor: c.outline }]}>
+          {items.map((item) => (
+            <Pressable
+              key={String(item.value)}
+              accessibilityRole="button"
+              accessibilityState={{ selected: item.value === selected }}
+              onPress={() => { setSelected(item.value); setOpen(false); onChange(item.value); }}
+              style={[styles.option, item.value === selected && { backgroundColor: c.primaryContainer }]}
+            >
+              <Text variant="body" numberOfLines={1} style={{ flex: 1 }}>{item.label}</Text>
+              {item.value === selected && <Icon name="check" size={18} color={c.onPrimaryContainer} />}
             </Pressable>
-          );
-        })}
-      </Animated.ScrollView>
+          ))}
+        </ScrollView>
+      )}
     </View>
   );
 }
 
-/** Wheels side by side (year · month) over one shared middle band. Give the wheels `bare`. */
 export function WheelRow({ children }: { children: ReactNode }) {
-  const { c } = useTheme();
-  return (
-    <View style={styles.row}>
-      <View pointerEvents="none" style={[styles.band, { backgroundColor: c.card }]} />
-      {children}
-    </View>
-  );
+  return <View style={styles.row}>{children}</View>;
 }
 
 const styles = StyleSheet.create({
-  row: { flexDirection: "row" },
-  band: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    top: PAD,
-    height: ITEM_H,
-    borderRadius: radius.control,
-  },
-  item: { height: ITEM_H, alignItems: "center", justifyContent: "center", paddingHorizontal: 8 },
+  row: { flexDirection: "row", alignItems: "flex-start", gap: space.sm },
+  control: { minHeight: size.hit, borderWidth: 1, borderRadius: radius.control, paddingHorizontal: space.md, flexDirection: "row", alignItems: "center", gap: space.sm },
+  list: { maxHeight: 192, marginTop: space.xs, borderWidth: 1, borderRadius: radius.control },
+  option: { minHeight: size.hit, paddingHorizontal: space.md, flexDirection: "row", alignItems: "center", gap: space.sm },
 });

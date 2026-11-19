@@ -160,7 +160,7 @@ export function FoldMenu({
               revealed as the panel grows around it. */}
           <Animated.View
             onLayout={(e) => {
-              if (!measured) setContentH(e.nativeEvent.layout.height);
+              setContentH(e.nativeEvent.layout.height);
             }}
             style={[
               styles.content,
