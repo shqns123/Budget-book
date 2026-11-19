@@ -27,6 +27,7 @@ import { buildViews, sourceOptions, type InboxView } from "@/lib/notices/inbox";
 import { counterpartyKey } from "@/lib/notices/parse";
 import { useInbox } from "@/store/inbox-store";
 import { useLedger } from "@/store/ledger-store";
+import { usePrefs } from "@/store/prefs-store";
 import { space } from "@/theme/tokens";
 
 /**
@@ -40,15 +41,16 @@ export default function InboxScreen() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editError, setEditError] = useState("");
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const salaryAccountId = usePrefs().linkTransfer.to;
 
   const views = useMemo(
     () =>
       buildViews(
         inbox.items,
-        { accounts, categories, recurring: data.recurring, transactions: data.transactions, rules },
+        { accounts, categories, recurring: data.recurring, transactions: data.transactions, rules, salaryAccountId },
         (id) => accountName(accounts, id),
       ),
-    [inbox.items, accounts, categories, data.recurring, data.transactions, rules],
+    [inbox.items, accounts, categories, data.recurring, data.transactions, rules, salaryAccountId],
   );
   const sources = useMemo(() => sourceOptions(views), [views]);
   const activeFilter = sources.some((s) => s.key === filter) ? filter : "";
@@ -65,9 +67,17 @@ export default function InboxScreen() {
     const key = counterpartyKey(parsed.counterparty);
     const own = parsed.direction === "in" && draft.type === "transfer" ? draft.toAccountId : draft.accountId;
     setRules((r) => {
-      const sources = { ...r.sources, [parsed.source.key]: own };
+      // A card / account is linked on its first 등록 and stays so: picking another 통장 for one
+      // record changes only that record. The link itself is changed in 결제 알림 설정.
+      const sources = { ...r.sources };
+      const link = (sourceKey: string, accountId: string) => {
+        const current = sources[sourceKey];
+        if (accountId && !(current && accounts.some((a) => a.id === current))) sources[sourceKey] = accountId;
+      };
+      link(parsed.source.key, own);
       const paired = view.paired?.parsed;
-      if (paired && draft.type === "transfer" && draft.toAccountId) sources[paired.source.key] = draft.toAccountId;
+      // A merged 카드 대금 notice keeps its own link (the 월급통장 it is paid from when alone).
+      if (paired && !paired.bill && draft.type === "transfer") link(paired.source.key, draft.toAccountId);
       if (parsed.direction === "cancel") return { ...r, sources };
       if (draft.recurringId) {
         return { ...r, sources, recurringAlias: { ...r.recurringAlias, [key]: draft.recurringId } };

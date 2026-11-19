@@ -2,7 +2,7 @@
  * Reading a payment notification (card approval, bank withdrawal / deposit) into its fields.
  * Pure functions with no app imports: the rules here are checked against real notices.
  *
- * Sources with a known layout (KB Pay, 카카오뱅크) have their own template; any other text goes
+ * Sources with a known layout (KB Pay 승인 / 카드 대금, 카카오뱅크) have their own template; any other text goes
  * through the generic reader, which takes the fields it knows out of the text and keeps what is
  * left as the 가맹점. When neither reads it, the server's model is asked (lib/notices/analyze).
  */
@@ -32,6 +32,11 @@ export type ParsedNotice = {
   source: NoticeSource;
   /** Months of 할부; 0 = 일시불 or not a card. */
   installment: number;
+  /**
+   * A card company's notice that its 카드 대금 was paid (즉시결제 from a bank account). It doesn't
+   * say which card, so it is an 이동 from the 월급통장 with the 받는 통장 left to pick.
+   */
+  bill?: boolean;
   via: "template" | "generic" | "model";
 };
 
@@ -140,9 +145,36 @@ function cardApproval(raw: RawNotice): ParsedNotice | null {
   };
 }
 
+// ── 카드 대금 즉시결제 ──────────────────────────────────────────────────────────────────────
+// "KB국민카드 송*진님 11/19 22:13 카드대금 750원 결제완료(오픈뱅킹)"
+const CARD_BILL_PAID =
+  /([가-힣A-Za-z]*카드)\s*(?:[가-힣]\*[가-힣]?\s*님?)?\s*(\d{1,2})\/(\d{1,2})\s+(\d{1,2}):(\d{2})\s+(카드\s*대금|결제\s*대금)\s*([\d,]+)\s*원\s*(?:결제|납부|출금)\s*완료/;
+
+function cardBill(raw: RawNotice): ParsedNotice | null {
+  const m = oneLine(raw.text).match(CARD_BILL_PAID);
+  if (!m) return null;
+  const [, issuer, month, day, hour, minute, word, amount] = m;
+  const posted = new Date(raw.postedAt);
+  return {
+    direction: "out",
+    amount: toNumber(amount),
+    currency: "KRW",
+    date: dateFrom(Number(month), Number(day), posted),
+    time: `${pad(Number(hour))}:${minute}`,
+    counterparty: `${issuer} ${word.replace(/\s+/g, "")}`,
+    // Its own key: linking it never touches the card's own link.
+    source: { key: `${issuer}|대금`, label: `${issuer} 대금 결제`, kind: "account" },
+    installment: 0,
+    bill: true,
+    via: "template",
+  };
+}
+
 // ── 그 밖의 문자 ────────────────────────────────────────────────────────────────────────────
 const DATETIME = /(\d{1,2})[\/.\-](\d{1,2})\s*(\d{1,2}):(\d{2})/;
-const ISSUER = /([가-힣A-Za-z]+(?:카드|체크|은행|뱅크|증권|페이))/;
+const ISSUER = /([가-힣A-Za-z]+(?:카드|체크|은행|뱅크|증권|페이|금고))/;
+/** A bank account number as notices print it, masked or not: "9003-3071-****-6", "110-***-123456". */
+const ACCOUNT_NUMBER = /\d{2,6}(?:-[\d*]{1,8}){2,4}/;
 const NUMBER = /[(\[]([\d*]{4})[)\]]|(?:카드|체크|통장|계좌)\s*(\d{4}|\d\*\d\*)/;
 const INSTALLMENT = /(\d{1,2})\s*개월/;
 
@@ -156,31 +188,39 @@ function pickAmount(text: string) {
   return null;
 }
 
-/** What the generic reader takes out of the text; what's left is the 가맹점. */
+const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/**
+ * What the generic reader takes out of the text; what's left is the 가맹점 or the 메모. Words
+ * inside the 메모 stay ("KB카드출금", "테스트이체"): only standalone 출금 / 승인 words go, and a
+ * card or bank name only when it is the notice's own or carries a number.
+ */
 const NOISE: RegExp[] = [
   /\[[^\]]{1,12}\]/g,
   /[(\[][\d*\-]{3,}[)\]]/g,
-  /\d{2,6}-[\d*]{2,6}-[\d*]{2,8}/g,
+  new RegExp(ACCOUNT_NUMBER.source, "g"),
   /(누적|잔액|잔여\s*한도|한도)\s*:?\s*[\d,]+\s*원/g,
   /[\d,]+\s*원/g,
   new RegExp(DATETIME.source, "g"),
   /일시불|\d{1,2}\s*개월|할부/g,
   /[가-힣]\*[가-힣]?\s*님?/g,
-  /[가-힣A-Za-z]+(카드|체크|은행|뱅크|증권|페이)\s*[(\[]?[\d*]{0,4}[)\]]?/g,
-  /승인취소|승인|취소|결제|사용|출금|입금|이체/g,
+  /[가-힣A-Za-z]+(카드|체크|은행|뱅크|증권|페이|금고)\s*[(\[]?[\d*]{4}[)\]]?/g,
   /[(\[]\s*[)\]]/g,
 ];
+/** 출금 / 승인 words standing on their own (inside a 메모 they stay). */
+const TX_WORDS = /(^|\s)(승인취소|승인|취소|결제|사용|출금|입금|이체)(?=\s|$)/g;
 
 function generic(raw: RawNotice): ParsedNotice | null {
-  // A text message's title is its sender: a number adds nothing, a name ("출금 1원") might.
-  const title = /^[\d\s+\-#()]*$/.test(raw.title) ? "" : raw.title;
+  // A title helps only when it is about the money ("출금 1원"). A sender's number or a bank's
+  // name ("MG새마을금고") would end up in the 가맹점; the bank's name still names the account.
+  const title = MONEY.test(raw.title) || TX_WORD.test(raw.title) ? raw.title : "";
   const text = oneLine(`${title} ${raw.text}`);
   const amount = pickAmount(text);
   if (!amount) return null;
   const posted = new Date(raw.postedAt);
   const direction: NoticeDirection = /취소/.test(text)
     ? "cancel"
-    : /(^|\s)입금/.test(text) && !/(^|\s)출금/.test(text)
+    : /(^|[\s\]])입금/.test(text) && !/(^|[\s\]])출금/.test(text)
       ? "in"
       : "out";
   let date = isoOf(posted);
@@ -190,13 +230,17 @@ function generic(raw: RawNotice): ParsedNotice | null {
     date = dateFrom(Number(dt[1]), Number(dt[2]), posted);
     time = `${pad(Number(dt[3]))}:${dt[4]}`;
   }
+  const issuer = (raw.title.match(ISSUER) ?? text.match(ISSUER))?.[1] ?? appLabel(raw);
   let rest = text;
   for (const re of NOISE) rest = rest.replace(re, " ");
-  const counterparty = oneLine(rest);
+  const counterparty = oneLine(
+    rest
+      .replace(new RegExp(String.raw`${escapeRegExp(issuer)}\s*[(\[]?[\d*]{0,4}[)\]]?`, "g"), " ")
+      .replace(TX_WORDS, " "),
+  );
   if (!counterparty || counterparty.length > 40 || /\d{5,}/.test(counterparty)) return null;
-  const issuer = text.match(ISSUER)?.[1] ?? appLabel(raw);
   const numberMatch = text.match(NUMBER);
-  const number = numberMatch?.[1] ?? numberMatch?.[2] ?? "";
+  const number = numberMatch?.[1] ?? numberMatch?.[2] ?? text.match(ACCOUNT_NUMBER)?.[0] ?? "";
   const installment = text.match(INSTALLMENT);
   const isCard = /카드|체크/.test(issuer);
   return {
@@ -216,9 +260,13 @@ function generic(raw: RawNotice): ParsedNotice | null {
   };
 }
 
-/** The notice's fields, or null when only the model can read it. */
-export function parseNotice(raw: RawNotice): ParsedNotice | null {
-  return kakaoBank(raw) ?? cardApproval(raw) ?? generic(raw);
+/**
+ * The notice's fields, or null when only the model can read it. Full-width letters and digits
+ * ("ＫＢ카드출금") are read as ordinary ones first.
+ */
+export function parseNotice(notice: RawNotice): ParsedNotice | null {
+  const raw = { ...notice, title: notice.title.normalize("NFKC"), text: notice.text.normalize("NFKC") };
+  return kakaoBank(raw) ?? cardApproval(raw) ?? cardBill(raw) ?? generic(raw);
 }
 
 /** Where a notice the model read came from: its app, the card or account number if it gave one. */

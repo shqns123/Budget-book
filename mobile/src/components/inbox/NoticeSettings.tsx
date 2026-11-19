@@ -17,6 +17,7 @@ import { confirm } from "@/lib/confirm";
 import type { Account } from "@/lib/ledger";
 import type { NoticeRules } from "@/lib/notices/classify";
 import { useInbox } from "@/store/inbox-store";
+import { usePrefs } from "@/store/prefs-store";
 import { space } from "@/theme/tokens";
 
 const KNOWN_APPS: Record<string, string> = {
@@ -80,6 +81,7 @@ function SettingsBody({
   setRules: (update: (rules: NoticeRules) => NoticeRules) => void;
   accounts: Account[];
 }) {
+  const { linkTransfer, setLinkTransfer } = usePrefs();
   const [names, setNames] = useState(rules.myNames.join(", "));
   const [keywords, setKeywords] = useState(rules.transferKeywords.join(", "));
   const [allowed, setAllowed] = useState(() => Capture.getAllowedPackages());
@@ -154,6 +156,16 @@ function SettingsBody({
       <Text variant="footnote" weight="400" color="text2">
         출금 메모에 이 단어가 있으면 계좌 간 이동으로 채워요 (예: KB카드대금, 생활비이체).
       </Text>
+      <SelectField
+        label="월급통장"
+        value={linkTransfer.to}
+        options={[{ value: "", label: "고르지 않음" }, ...accountOptions.filter((o) => o.value !== UNLINK)]}
+        onChange={(to) => setLinkTransfer({ ...linkTransfer, to })}
+      />
+      <Text variant="footnote" weight="400" color="text2">
+        &apos;xx카드 대금이체&apos; 출금은 알림이 온 통장에서 이 월급통장으로 옮기는 이동으로 채워요. 거래 입력의
+        &apos;자금 이동 같이 기록&apos;과 같은 월급통장이에요.
+      </Text>
 
       {supported ? (
         <Section title="읽을 앱">
@@ -172,8 +184,13 @@ function SettingsBody({
       ) : null}
 
       <Text variant="footnote" weight="400" color="text2">
-        새 카드·계좌는 카드사·은행 이름이 같은 통장으로 먼저 채워요. 같은 카드사 카드가 여러 장이면 통장 이름이나
-        메모에 카드 끝 4자리(예: 2222)를 적어 두세요. 등록하면 그 통장으로 연결돼요.
+        새 카드·계좌는 카드사·은행 이름이 같은 통장으로 채워요. 카드 알림은 카드 통장끼리, 은행 알림은 은행
+        통장끼리만 비교하고, 후보가 딱 하나일 때만 채워요. 통장 메모에 번호를 적어 두면 정확히 맞춰요: 카드와
+        카카오뱅크는 끝 4자리(예: 2222), 다른 은행은 계좌번호 전체(예: 9003-3071-1234-6).
+      </Text>
+      <Text variant="footnote" weight="400" color="text2">
+        처음 등록할 때 연결이 확정돼요. 그 뒤에 한 거래만 다른 통장으로 등록해도 연결은 그대로고, 바꾸려면 아래
+        목록에서 바꿔요.
       </Text>
       <Section title="연결된 카드·계좌">
         {linked.length ? (

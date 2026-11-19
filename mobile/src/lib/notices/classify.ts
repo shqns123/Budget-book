@@ -7,11 +7,16 @@
  *   1. a 반복 항목 the 상대방 was linked to before, or with the same name
  *   2. what the same 상대방 was registered as last time (remembered on 등록)
  *   3. 상대방 is one of "내 이름" → 이동 (to the account a matching 입금 notice came into)
- *   4. 상대방 holds a ledger account's name ("생활비이체" ↔ 생활비 통장) → 이동 to it
- *   5. 상대방 holds a 소분류 name ("식비이체" ↔ 식비) → 지출 in that 분류
- *   6. an 이체 keyword (카드대금, 이체) → 이동, 받는 통장 left to pick
- *   7. otherwise 지출, in the 분류 the same name had last time
+ *   4. the bank's 카드 대금 memo ("KB카드출금") → 이동 to that card company's only card account;
+ *      my own 카드 대금 memo ("KB카드 대금이체") → 이동 from the notice's account to the 월급통장
+ *   5. 상대방 holds a ledger account's name ("생활비이체" ↔ 생활비 통장) → 이동 to it
+ *   6. 상대방 holds a 소분류 name ("식비이체" ↔ 식비) → 지출 in that 분류
+ *   7. an 이체 keyword (대금, 이체) → 이동, 받는 통장 left to pick
+ *   8. otherwise 지출, in the 분류 the same name had last time
  * A 반복 항목 that matches on account, day and amount but not by name is offered, not applied.
+ * A card company's 카드 대금 결제완료 notice is always 이동: from the bank 출금 notice's account
+ * when the two are merged (else the 월급통장) → the company's only card account, or left to pick.
+ * The 내용 is always the 가맹점 / 상대방 as the notice wrote it: no rule renames it.
  */
 import type { Account, LedgerCategory, RecurringTemplate, Transaction, TransactionType } from "@/lib/ledger";
 import { counterpartyKey, type ParsedNotice } from "./parse";
@@ -72,6 +77,8 @@ export type Classification = {
   suggestion?: RecurringTemplate;
   /** The account was guessed from the card / bank name (not linked yet): 등록 links it. */
   accountGuessed?: boolean;
+  /** The 받는 카드 통장 of a 카드 대금 결제 was picked as the card company's only card account. */
+  toAccountGuessed?: boolean;
 };
 
 export type ClassifyContext = {
@@ -82,7 +89,19 @@ export type ClassifyContext = {
   rules: NoticeRules;
   /** The account a matching 입금 notice (same amount, minutes apart) came into, if any. */
   pairedToAccountId?: string;
+  /** The 월급통장 ("자금 이동 같이 기록"'s 받는 통장): where a 카드 대금 이체 goes. */
+  salaryAccountId?: string;
+  /**
+   * For a card company's 카드 대금 notice merged with the bank's 출금 notice of the same payment:
+   * the bank notice's account, where the money really left.
+   */
+  fromAccountId?: string;
 };
+
+/** My own memo on money put aside for the card bill: "KB카드 대금이체", "카드값". */
+const CARD_BILL = /카드.{0,4}대금|카드값/;
+/** The bank's memo when the card company takes its bill: "KB카드출금". */
+const CARD_DEBIT = /카드출금/;
 
 const compact = (value: string) => value.replace(/\s+/g, "").toLowerCase();
 const ledgerDate = (iso: string) => iso.replaceAll("-", ".");
@@ -125,10 +144,26 @@ const issuersIn = (name: string) => {
   return ISSUERS.filter((words) => words.some((w) => text.includes(w)));
 };
 
+/** "9003-3071-1234-6" or "9003 3071 1234 6" → "9003307112346", so numbers compare digit by digit. */
+const joinDigits = (text: string) => text.replace(/(?<=\d)[-\s]+(?=\d)/g, "");
+
+/**
+ * A notice's card / account number as a pattern over an account's name and 메모, where * (masked)
+ * is any digit. A card's or 카카오뱅크's last four ("2222", "1*2*") match the end of a number; a
+ * whole account number ("9003-3071-****-6") matches the whole number written in the 메모.
+ */
+function numberPattern(number: string) {
+  const plain = number.replace(/[^\d*]/g, "");
+  if (plain.length < 4) return null;
+  const body = plain.replace(/\*/g, "\\d");
+  return new RegExp(plain.length > 4 ? `(?<!\\d)${body}(?!\\d)` : `${body}(?!\\d)`);
+}
+
 /**
  * The ledger account a card / account in a notice most likely is, before it is linked: same kind
  * (card with card, bank with bank), the same card company or bank in the name, and when several
- * fit, the one whose name or 메모 has the card's last four digits. Only an unambiguous match.
+ * fit, the one whose name or 메모 has the card's last four digits or the account's number. Only an
+ * unambiguous match.
  */
 export function guessAccount(source: ParsedNotice["source"], accounts: Account[]) {
   const [issuer = "", number = ""] = source.key.split("|");
@@ -140,14 +175,24 @@ export function guessAccount(source: ParsedNotice["source"], accounts: Account[]
     const name = compact(a.name);
     return groups.length ? issuersIn(a.name).some((g) => groups.includes(g)) : core.length >= 2 && name.includes(core);
   });
-  // "2222", or a masked "1*2*" where * is any digit.
-  const digits = number && new RegExp(number.replace(/\*/g, "\\d"));
-  const byNumber = (list: Account[]) => (digits ? list.filter((a) => digits.test(`${a.name} ${a.memo ?? ""}`)) : []);
+  const digits = numberPattern(number);
+  const byNumber = (list: Account[]) =>
+    digits ? list.filter((a) => digits.test(joinDigits(`${a.name} ${a.memo ?? ""}`))) : [];
   const numbered = byNumber(byIssuer);
   if (numbered.length === 1) return numbered[0].id;
   if (byIssuer.length === 1) return byIssuer[0].id;
   const anyNumbered = byNumber(sameKind);
   return anyNumbered.length === 1 ? anyNumbered[0].id : "";
+}
+
+/** The card account a 카드 대금 결제 goes to: the only card account of the company named in `text`. */
+function billCard(text: string, accounts: Account[]) {
+  const groups = issuersIn(text);
+  if (!groups.length) return "";
+  const cards = accounts.filter(
+    (a) => !a.hidden && a.type === "card" && issuersIn(a.name).some((g) => groups.includes(g)),
+  );
+  return cards.length === 1 ? cards[0].id : "";
 }
 
 function daysApart(day: number, iso: string) {
@@ -173,12 +218,12 @@ export function registeredThisMonth(template: RecurringTemplate, iso: string, tr
   );
 }
 
+/** Keeps the draft's 내용 (the notice's own words): the 반복 항목 sets type, accounts and 분류. */
 function fromTemplate(template: RecurringTemplate, base: NoticeDraft): NoticeDraft {
   const type = template.type ?? "expense";
   return {
     ...base,
     type,
-    name: template.name,
     accountId: base.accountId || template.accountId,
     toAccountId: type === "transfer" ? (template.toAccountId ?? "") : "",
     category: type === "transfer" ? "" : template.category,
@@ -257,9 +302,14 @@ function findCancelled(notice: ParsedNotice, accountId: string, ctx: ClassifyCon
 }
 
 /** The ledger account a notice's card / account is: linked before, else guessed by its name. */
-function sourceAccount(notice: ParsedNotice, ctx: ClassifyContext) {
+export function sourceAccount(notice: ParsedNotice, ctx: ClassifyContext) {
+  const known = (id?: string) => Boolean(id && ctx.accounts.some((a) => a.id === id));
+  // Merged with the bank's 출금 notice: that notice's account is where the money left.
+  if (notice.bill && known(ctx.fromAccountId)) return { accountId: ctx.fromAccountId!, guessed: false };
   const mapped = ctx.rules.sources[notice.source.key];
-  if (mapped && ctx.accounts.some((a) => a.id === mapped)) return { accountId: mapped, guessed: false };
+  if (mapped && known(mapped)) return { accountId: mapped, guessed: false };
+  // A 카드 대금 notice names no bank account: the money comes from the 월급통장.
+  if (notice.bill) return { accountId: known(ctx.salaryAccountId) ? ctx.salaryAccountId! : "", guessed: false };
   const guessed = guessAccount(notice.source, ctx.accounts);
   return { accountId: guessed, guessed: Boolean(guessed) };
 }
@@ -297,11 +347,25 @@ function classifyWith(notice: ParsedNotice, ctx: ClassifyContext, accountId: str
   if (notice.direction === "cancel") {
     const original = findCancelled(notice, accountId, ctx);
     return {
-      draft: { ...base, type: "income", name: `${notice.counterparty} 취소` },
+      draft: { ...base, type: "income" },
       cancelOf: original?.id,
       reason: original ? "취소된 결제를 장부에서 찾았어요" : "취소된 결제를 장부에서 찾지 못했어요",
     };
   }
+
+  // 카드 대금 결제 (the card company's notice): an 이동 to that company's card account when the
+  // ledger has only one, else left to pick, since the notice doesn't say which card.
+  const billPaid = (company: string): Classification => {
+    const card = billCard(company, accounts);
+    return {
+      draft: { ...base, type: "transfer", toAccountId: card },
+      reason: card
+        ? "카드 대금 결제라 계좌 간 이동이에요. 카드사가 같은 카드 통장이 하나라 받는 통장으로 채웠어요"
+        : "카드 대금 결제라 계좌 간 이동이에요. 받는 카드 통장을 골라 주세요",
+      ...(card ? { toAccountGuessed: true } : {}),
+    };
+  };
+  if (notice.bill) return billPaid(notice.source.key.split("|")[0]);
 
   // 1. 반복 항목
   const recurring = matchRecurring(notice, accountId, ctx);
@@ -328,7 +392,6 @@ function classifyWith(notice: ParsedNotice, ctx: ClassifyContext, accountId: str
       {
         ...base,
         type: memory.type,
-        name: memory.name || base.name,
         category: memory.type === "transfer" ? "" : memory.category,
         minorCategory: memory.type === "transfer" ? "" : memory.minorCategory,
         toAccountId: known(toAccountId) ? toAccountId : "",
@@ -357,15 +420,26 @@ function classifyWith(notice: ParsedNotice, ctx: ClassifyContext, accountId: str
       "내 이름으로 보낸 돈이라 계좌 간 이동이에요",
     );
   }
-  // 4. a ledger account's name in the memo
   const text = compact(notice.counterparty);
+  // 4. the card company taking its bill from this account ("KB카드출금")
+  if (CARD_DEBIT.test(text)) return { ...billPaid(notice.counterparty), suggestion };
+  //    the bill's money put aside ahead, from this account to the 월급통장 ("KB카드 대금이체")
+  if (CARD_BILL.test(text)) {
+    const paired = known(ctx.pairedToAccountId) ? ctx.pairedToAccountId : "";
+    const salary = known(ctx.salaryAccountId) && ctx.salaryAccountId !== accountId ? ctx.salaryAccountId : "";
+    return result(
+      { ...base, type: "transfer", toAccountId: paired || salary || "" },
+      paired || !salary ? "카드 대금 이체라 계좌 간 이동이에요" : "카드 대금 이체라 월급통장으로 옮기는 이동이에요",
+    );
+  }
+  // 5. a ledger account's name in the memo
   const target = accounts
     .filter((a) => a.id !== accountId && !a.hidden && accountCore(a.name).length >= 2)
     .find((a) => text.includes(accountCore(a.name)));
   if (target) {
     return result({ ...base, type: "transfer", toAccountId: target.id }, `메모에 '${target.name}'이 있어요`);
   }
-  // 5. a 소분류 in the memo
+  // 6. a 소분류 in the memo
   const category = categoryInName(notice.counterparty, ctx.categories, "expense");
   if (category) {
     return result(
@@ -373,14 +447,14 @@ function classifyWith(notice: ParsedNotice, ctx: ClassifyContext, accountId: str
       `메모에 '${category.minorCategory}'가 있어요`,
     );
   }
-  // 6. 이체 keyword
+  // 7. 이체 keyword
   if (rules.transferKeywords.some((word) => word.trim() && text.includes(compact(word)))) {
     return result(
       { ...base, type: "transfer", toAccountId: ctx.pairedToAccountId ?? "" },
       "이체 메모라 계좌 간 이동으로 채웠어요",
     );
   }
-  // 7. 지출
+  // 8. 지출
   return result(base, notice.source.kind === "card" ? "카드 결제" : "출금");
 }
 

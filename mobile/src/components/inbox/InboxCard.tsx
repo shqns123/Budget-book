@@ -104,7 +104,8 @@ export function InboxCard({
         {view.linked && classification.accountGuessed && !item.edits.accountId ? (
           <Tag label="통장 추정 · 등록하면 연결" />
         ) : null}
-        {view.paired ? <Tag label="입금 알림과 묶음" /> : null}
+        {classification.toAccountGuessed && !item.edits.toAccountId ? <Tag label="받는 카드 추정" /> : null}
+        {view.paired ? <Tag label={view.paired.parsed?.bill ? "카드사 알림과 묶음" : "입금 알림과 묶음"} /> : null}
       </View>
       <Text variant="footnote" weight="400" color="text2">
         {classification.reason}
