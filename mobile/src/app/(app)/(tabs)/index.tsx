@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { PanResponder, StyleSheet, View } from "react-native";
+import { AccountDonut } from "@/components/ledger/AccountDonut";
 import { PeriodChip } from "@/components/ledger/ScopeControls";
 import {
   EmptyState,
@@ -64,7 +65,7 @@ export default function ReportsScreen() {
 }
 
 function MonthlyReport() {
-  const { data } = useLedger();
+  const { data, accounts } = useLedger();
   const { month } = usePrefs();
   const selected = ALL_ACCOUNTS;
   const [category, setCategory] = useState<string | null>(null);
@@ -139,6 +140,12 @@ function MonthlyReport() {
           <EmptyState title="이번 달 지출이 없어요" />
         )}
       </Section>
+
+      <AccountDonut
+        records={report.current}
+        accounts={accounts}
+        categoryOrder={report.byCategory.map(([name]) => name)}
+      />
 
       {report.top.length > 0 && (
         <Section title="이번 달 큰 지출">

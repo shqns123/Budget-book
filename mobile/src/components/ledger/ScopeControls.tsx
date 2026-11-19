@@ -1,22 +1,21 @@
 import { useState } from "react";
-import { Animated, Pressable, ScrollView, StyleSheet, View, useWindowDimensions } from "react-native";
+import { StyleSheet, View } from "react-native";
 import { monthLabel } from "@/lib/dates";
 import type { AccountKind } from "@/lib/ledger";
 import { useLedger } from "@/store/ledger-store";
 import { usePrefs, type Scope } from "@/store/prefs-store";
-import { useTheme } from "@/theme/theme";
-import { radius, space } from "@/theme/tokens";
+import { space } from "@/theme/tokens";
 import {
-  CheckRow,
   Chip,
   FoldMenu,
   PrimaryButton,
-  SecondaryButton,
   Text,
   useFoldAnchor,
-  useSwipePager,
+  Wheel,
+  WheelRow,
   type Anchor,
   type IconName,
+  type WheelItem,
 } from "@/components/ui";
 
 export const accountIcon: Record<AccountKind, IconName> = {
@@ -28,9 +27,9 @@ export const accountIcon: Record<AccountKind, IconName> = {
 };
 
 /**
- * The month filter chip. Tapping it unfolds a month panel out of the chip (FoldMenu); picking a
- * month or tapping outside folds it back into the chip.
- * `compact` (overview header, where the title already names the month) is just a calendar icon.
+ * The month filter chip. Tapping it unfolds a year · month wheel out of the chip (FoldMenu); the
+ * month changes when the panel closes (완료, or a tap outside).
+ * `compact` (a header where the title already names the month) is just a calendar icon.
  */
 export function MonthChip({ compact }: { compact?: boolean }) {
   const { month } = usePrefs();
@@ -46,138 +45,73 @@ export function MonthChip({ compact }: { compact?: boolean }) {
           onPress={show}
         />
       </View>
-      {anchor ? (
-        <FoldMenu anchor={anchor} visible={open} onClose={hide} onClosed={clear}>
-          <MonthPicker onPicked={hide} />
-        </FoldMenu>
-      ) : null}
+      {anchor ? <PeriodMenu period="month" anchor={anchor} visible={open} onClose={hide} onClosed={clear} /> : null}
     </>
   );
 }
 
-function MonthPicker({ onPicked }: { onPicked: () => void }) {
-  const { c } = useTheme();
-  const { width: screenW } = useWindowDimensions();
-  const { month, setMonth } = usePrefs();
-  const [year, setYear] = useState(month.slice(0, 4));
-  const width = Math.min(320, screenW - space.lg * 2);
-
-  // Swipe sideways to turn the year (left = next year).
-  const pager = useSwipePager(width, (dir) => setYear((y) => String(Number(y) + dir)));
-
-  return (
-    <View style={{ overflow: "hidden" }} {...pager.panHandlers}>
-      <Animated.View style={[{ gap: space.md }, pager.pageStyle]}>
-        <View
-          style={styles.yearRow}
-          accessible
-          accessibilityRole="adjustable"
-          accessibilityLabel={`${year}년`}
-          accessibilityHint="옆으로 밀어 해를 바꿔요"
-          accessibilityActions={[{ name: "increment" }, { name: "decrement" }]}
-          onAccessibilityAction={(e) => pager.turn(e.nativeEvent.actionName === "increment" ? 1 : -1)}
-        >
-          <Text variant="headline" tabular>
-            {year}
-          </Text>
-        </View>
-        <View style={styles.monthGrid}>
-          {Array.from({ length: 12 }, (_, i) => `${year}-${String(i + 1).padStart(2, "0")}`).map((value) => {
-            const selected = value === month;
-            return (
-              <Pressable
-                key={value}
-                onPress={() => {
-                  setMonth(value);
-                  onPicked();
-                }}
-                accessibilityRole="button"
-                accessibilityState={{ selected }}
-                accessibilityLabel={monthLabel(value)}
-                style={({ pressed }) => [
-                  styles.monthCell,
-                  { backgroundColor: selected ? c.primaryContainer : pressed ? c.fill : c.card },
-                ]}
-              >
-                <Text
-                  variant="subhead"
-                  weight={selected ? "700" : "500"}
-                  color={selected ? "onPrimaryContainer" : "text"}
-                >
-                  {Number(value.slice(5))}월
-                </Text>
-              </Pressable>
-            );
-          })}
-        </View>
-      </Animated.View>
-    </View>
-  );
+/** Years on the wheel: ten back from the earlier of this year and the picked one, five ahead. */
+function yearItems(picked: number): WheelItem<number>[] {
+  const now = new Date().getFullYear();
+  const from = Math.min(now, picked) - 10;
+  const to = Math.max(now, picked) + 5;
+  return Array.from({ length: to - from + 1 }, (_, i) => ({ value: from + i, label: `${from + i}년` }));
 }
 
-/** 12 years per page (swipe for earlier / later); picking one keeps the month (2026-11 → 2025-11). */
-function YearPicker({ onPicked }: { onPicked: () => void }) {
-  const { c } = useTheme();
-  const { width: screenW } = useWindowDimensions();
+const MONTH_ITEMS: WheelItem<number>[] = Array.from({ length: 12 }, (_, i) => ({ value: i + 1, label: `${i + 1}월` }));
+
+/**
+ * The month (year · month wheels) or year (one wheel) picker in a fold-out panel. Mounted fresh
+ * for each opening; the pick is written once, when it closes, so the tabs recompute only once.
+ */
+function PeriodMenu({
+  period,
+  anchor,
+  visible,
+  onClose,
+  onClosed,
+}: {
+  period: "month" | "year";
+  anchor: Anchor;
+  visible: boolean;
+  onClose: () => void;
+  onClosed: () => void;
+}) {
   const { month, setMonth } = usePrefs();
-  const year = Number(month.slice(0, 4));
-  // Pages of 12 years; the first page holds the current one.
-  const [first, setFirst] = useState(year - ((year - 1) % 12));
-  const width = Math.min(320, screenW - space.lg * 2);
-  const pager = useSwipePager(width, (dir) => setFirst((f) => f + dir * 12));
+  const [year, setYear] = useState(Number(month.slice(0, 4)));
+  const [monthNo, setMonthNo] = useState(Number(month.slice(5)));
+  const [years] = useState(() => yearItems(year));
+  const close = () => {
+    const next = `${year}-${String(monthNo).padStart(2, "0")}`;
+    if (next !== month) setMonth(next);
+    onClose();
+  };
   return (
-    <View style={{ overflow: "hidden" }} {...pager.panHandlers}>
-      <Animated.View style={[{ gap: space.md }, pager.pageStyle]}>
-        <View
-          style={styles.yearRow}
-          accessible
-          accessibilityRole="adjustable"
-          accessibilityLabel={`${first}년부터 ${first + 11}년까지`}
-          accessibilityHint="옆으로 밀어 다른 연도를 봐요"
-          accessibilityActions={[{ name: "increment" }, { name: "decrement" }]}
-          onAccessibilityAction={(e) => pager.turn(e.nativeEvent.actionName === "increment" ? 1 : -1)}
-        >
-          <Text variant="headline" tabular>
-            {first} – {first + 11}
-          </Text>
-        </View>
-        <View style={styles.monthGrid}>
-          {Array.from({ length: 12 }, (_, i) => first + i).map((value) => {
-            const selected = value === year;
-            return (
-              <Pressable
-                key={value}
-                onPress={() => {
-                  setMonth(`${value}${month.slice(4)}`);
-                  onPicked();
-                }}
-                accessibilityRole="button"
-                accessibilityState={{ selected }}
-                accessibilityLabel={`${value}년`}
-                style={({ pressed }) => [
-                  styles.monthCell,
-                  { backgroundColor: selected ? c.primaryContainer : pressed ? c.fill : c.card },
-                ]}
-              >
-                <Text
-                  variant="subhead"
-                  tabular
-                  weight={selected ? "700" : "500"}
-                  color={selected ? "onPrimaryContainer" : "text"}
-                >
-                  {value}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </View>
-      </Animated.View>
-    </View>
+    <FoldMenu
+      anchor={anchor}
+      visible={visible}
+      onClose={close}
+      onClosed={onClosed}
+      maxWidth={period === "month" ? 300 : 240}
+      accessibilityLabel={period === "month" ? "조회 월 선택" : "조회 연도 선택"}
+    >
+      <View style={{ gap: space.md }}>
+        {period === "month" ? (
+          <WheelRow>
+            <Wheel bare flex={1.3} items={years} value={year} onChange={setYear} accessibilityLabel="연도" />
+            <Wheel bare items={MONTH_ITEMS} value={monthNo} onChange={setMonthNo} accessibilityLabel="월" />
+          </WheelRow>
+        ) : (
+          <Wheel items={years} value={year} onChange={setYear} accessibilityLabel="연도" />
+        )}
+        <PrimaryButton label="완료" onPress={close} />
+      </View>
+    </FoldMenu>
   );
 }
 
 /**
- * A calendar-icon chip that picks the month (월간) or the year (연간): the picker grows out of the
+ * A calendar-icon chip that picks the month (월간) or the year (연간): the wheel grows out of the
  * chip. For the report tab's header.
  */
 export function PeriodChip({ period }: { period: "month" | "year" }) {
@@ -192,11 +126,7 @@ export function PeriodChip({ period }: { period: "month" | "year" }) {
           onPress={show}
         />
       </View>
-      {anchor ? (
-        <FoldMenu anchor={anchor} visible={open} onClose={hide} onClosed={clear}>
-          {period === "month" ? <MonthPicker onPicked={hide} /> : <YearPicker onPicked={hide} />}
-        </FoldMenu>
-      ) : null}
+      {anchor ? <PeriodMenu period={period} anchor={anchor} visible={open} onClose={hide} onClosed={clear} /> : null}
     </>
   );
 }
@@ -208,63 +138,7 @@ export function accountFilterLabel(selected: string[], names: (id: string) => st
 }
 
 const ACCOUNT_HINT = "선택한 통장의 거래만 합산해요. 저장하면 다음에도 유지돼요.";
-
-/**
- * The account choice being edited. Taps change only this draft, so a tap repaints just the
- * picker: writing the app-wide selection on every tap made every open tab recompute its totals
- * and the checkboxes lag. `apply()` writes it once, when the picker closes; `save()` also keeps it
- * for next time. `reset()` starts over from the current selection.
- */
-function useAccountDraft(scope: Scope) {
-  const { accounts } = useLedger();
-  const { selected, setSelected, saveSelected } = usePrefs();
-  const current = selected[scope].filter((id) => accounts.some((a) => a.id === id));
-  const [draft, setDraft] = useState(current);
-  return {
-    accounts,
-    draft,
-    toggle: (id: string) => setDraft((d) => (d.includes(id) ? d.filter((x) => x !== id) : [...d, id])),
-    all: () => setDraft([]),
-    reset: () => setDraft(current),
-    apply: () => {
-      if (draft.length !== current.length || draft.some((id) => !current.includes(id))) setSelected(scope, draft);
-    },
-    save: () => saveSelected(scope, draft),
-  };
-}
-
-function AccountChecks({ draft }: { draft: ReturnType<typeof useAccountDraft> }) {
-  return (
-    <View style={{ gap: space.xs }}>
-      {draft.accounts.map((account) => (
-        <CheckRow
-          key={account.id}
-          label={account.name}
-          meta={account.kind === account.type ? undefined : account.kind}
-          icon={accountIcon[account.type] ?? "bank"}
-          checked={draft.draft.includes(account.id)}
-          onToggle={() => draft.toggle(account.id)}
-        />
-      ))}
-    </View>
-  );
-}
-
-function AccountButtons({ draft, onClose }: { draft: ReturnType<typeof useAccountDraft>; onClose: () => void }) {
-  return (
-    <View style={{ flexDirection: "row", gap: space.sm }}>
-      <SecondaryButton style={{ flex: 1 }} label="전체 통장" onPress={draft.all} />
-      <PrimaryButton
-        style={{ flex: 1 }}
-        label="저장"
-        onPress={() => {
-          draft.save();
-          onClose();
-        }}
-      />
-    </View>
-  );
-}
+const ALL = "";
 
 /** The account filter chip. Tapping it unfolds the account list out of the chip (FoldMenu). */
 export function AccountChip({ scope }: { scope: Scope }) {
@@ -291,6 +165,11 @@ export function AccountChip({ scope }: { scope: Scope }) {
   );
 }
 
+/**
+ * One account (or 전체 통장) on a wheel. Mounted fresh for each opening; the pick is written once,
+ * when the panel closes: writing the app-wide selection while the wheel turns would make every
+ * open tab recompute its totals. 저장 also keeps it for next time.
+ */
 function AccountMenu({
   scope,
   anchor,
@@ -304,10 +183,19 @@ function AccountMenu({
   onClose: () => void;
   onClosed: () => void;
 }) {
-  // Mounted fresh for each opening, so the draft starts from the current selection.
-  const draft = useAccountDraft(scope);
+  const { accounts } = useLedger();
+  const { selected, setSelected, saveSelected } = usePrefs();
+  const current = selected[scope].filter((id) => accounts.some((a) => a.id === id));
+  // A list picked before the wheel (several accounts) shows as 전체 until the wheel is turned.
+  const initial = current.length === 1 ? current[0] : ALL;
+  const [pick, setPick] = useState(initial);
+  const [items] = useState<WheelItem<string>[]>(() => [
+    { value: ALL, label: "전체 통장" },
+    ...accounts.map((a) => ({ value: a.id, label: a.name })),
+  ]);
+  const next = pick === ALL ? [] : [pick];
   const close = () => {
-    draft.apply();
+    if (pick !== initial) setSelected(scope, next);
     onClose();
   };
   return (
@@ -316,22 +204,27 @@ function AccountMenu({
       visible={visible}
       onClose={close}
       onClosed={onClosed}
-      maxWidth={360}
+      maxWidth={320}
       accessibilityLabel="통장 선택"
     >
-      <View style={styles.accountHead}>
-        <Text variant="headline" accessibilityRole="header">
-          통장 선택
-        </Text>
-        <Text variant="footnote" weight="400" color="text2">
-          {ACCOUNT_HINT}
-        </Text>
-      </View>
-      <ScrollView style={{ flexShrink: 1 }} contentContainerStyle={{ paddingVertical: space.sm }}>
-        <AccountChecks draft={draft} />
-      </ScrollView>
-      <View style={{ paddingTop: space.sm }}>
-        <AccountButtons draft={draft} onClose={close} />
+      <View style={{ gap: space.md }}>
+        <View style={styles.accountHead}>
+          <Text variant="headline" accessibilityRole="header">
+            통장 선택
+          </Text>
+          <Text variant="footnote" weight="400" color="text2">
+            {ACCOUNT_HINT}
+          </Text>
+        </View>
+        <Wheel items={items} value={initial} onChange={setPick} accessibilityLabel="통장" />
+        <PrimaryButton
+          label="저장"
+          onPress={() => {
+            if (pick !== initial) setSelected(scope, next);
+            saveSelected(scope, next);
+            onClose();
+          }}
+        />
       </View>
     </FoldMenu>
   );
@@ -355,14 +248,5 @@ export function useScopeSelection(scope: Scope) {
 }
 
 const styles = StyleSheet.create({
-  accountHead: { gap: space.xs, paddingHorizontal: space.xs, paddingBottom: space.xs },
-  yearRow: { minHeight: 40, alignItems: "center", justifyContent: "center" },
-  monthGrid: { flexDirection: "row", flexWrap: "wrap", gap: space.sm },
-  monthCell: {
-    width: "31%",
-    minHeight: 48,
-    borderRadius: radius.control,
-    alignItems: "center",
-    justifyContent: "center",
-  },
+  accountHead: { gap: space.xs, paddingHorizontal: space.xs },
 });

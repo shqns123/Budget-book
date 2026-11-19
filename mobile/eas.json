@@ -8,7 +8,8 @@
       "developmentClient": true,
       "distribution": "internal",
       "env": {
-        "APP_VARIANT": "development"
+        "APP_VARIANT": "development",
+        "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "761173368975-73l4mo95g2hpkoadfbc9q15v0gvoul8n.apps.googleusercontent.com"
       },
       "android": {
         "buildType": "apk"
@@ -22,7 +23,8 @@
       "autoIncrement": true,
       "env": {
         "APP_VARIANT": "production",
-        "EXPO_PUBLIC_API_URL": "https://budget.woojin2.synology.me"
+        "EXPO_PUBLIC_API_URL": "https://budget.woojin2.synology.me",
+        "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "761173368975-73l4mo95g2hpkoadfbc9q15v0gvoul8n.apps.googleusercontent.com"
       }
     },
     "production": {
@@ -32,7 +34,8 @@
       "autoIncrement": true,
       "env": {
         "APP_VARIANT": "production",
-        "EXPO_PUBLIC_API_URL": "https://budget.woojin2.synology.me"
+        "EXPO_PUBLIC_API_URL": "https://budget.woojin2.synology.me",
+        "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "761173368975-73l4mo95g2hpkoadfbc9q15v0gvoul8n.apps.googleusercontent.com"
       }
     }
   }

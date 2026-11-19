@@ -77,7 +77,7 @@ export function Row({
   meta?: string;
   /** A small mark under the meta line (e.g. a Tag). */
   badge?: ReactNode;
-  /** Title and trailing meta 2px smaller (long lists such as the transaction list). */
+  /** Long lists (the transaction list): title 14px and meta line 11px. */
   dense?: boolean;
   /** Lines the meta may take (break them with "
 "). */
@@ -120,7 +120,13 @@ export function Row({
           {title}
         </Text>
         {meta ? (
-          <Text variant="footnote" color="text2" weight="400" numberOfLines={metaLines}>
+          <Text
+            variant="footnote"
+            color="text2"
+            weight="400"
+            numberOfLines={metaLines}
+            style={dense ? styles.denseMeta : undefined}
+          >
             {meta}
           </Text>
         ) : null}
@@ -136,7 +142,7 @@ export function Row({
             trailing
           )}
           {trailingMeta ? (
-            <Text variant="caption" color="text2" weight="400" style={dense ? styles.denseMeta : undefined}>
+            <Text variant="caption" color="text2" weight="400">
               {trailingMeta}
             </Text>
           ) : null}
@@ -197,6 +203,6 @@ const styles = StyleSheet.create({
   rowText: { flex: 1, gap: 2 },
   trailing: { alignItems: "flex-end", gap: 2, maxWidth: "50%" },
   denseTitle: { fontSize: 14, lineHeight: 21 },
-  denseMeta: { fontSize: 10, lineHeight: 14 },
+  denseMeta: { fontSize: 11, lineHeight: 15 },
   divider: { height: StyleSheet.hairlineWidth, marginLeft: space.rowX, marginRight: space.rowX },
 });

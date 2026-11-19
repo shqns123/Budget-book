@@ -23,8 +23,9 @@ import { useKeyboardInset } from "./Keyboard";
 import { Text } from "./Text";
 
 const CLOSE_MS = 260;
-/** The same slightly bouncy spring the chip menus (FoldMenu) open with. */
-const OPEN_SPRING = { stiffness: 320, damping: 24, mass: 1 };
+/** Opens on an ease-out with no overshoot: the card grows straight to its size and stops there
+ * (a bouncy spring overshot it, so it grew past its size and shrank back). */
+const OPEN_MS = 340;
 
 type Rect = { x: number; y: number; width: number; height: number };
 
@@ -77,7 +78,13 @@ export function Popup({
     progress.stopAnimation();
     if (visible) {
       if (reduceMotion) progress.setValue(1);
-      else Animated.spring(progress, { toValue: 1, ...OPEN_SPRING, useNativeDriver: false }).start();
+      else
+        Animated.timing(progress, {
+          toValue: 1,
+          duration: OPEN_MS,
+          easing: Easing.bezier(0.2, 0, 0, 1),
+          useNativeDriver: false,
+        }).start();
       return;
     }
     Animated.timing(progress, {

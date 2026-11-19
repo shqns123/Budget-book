@@ -1,6 +1,24 @@
-import { TabList, TabSlot, TabTrigger, Tabs, type TabTriggerSlotProps } from "expo-router/ui";
-import { useEffect, useState } from "react";
-import { Animated, Easing, Pressable, StyleSheet, View, type GestureResponderEvent, type PressableProps } from "react-native";
+import { usePathname } from "expo-router";
+import {
+  TabList,
+  TabSlot,
+  TabTrigger,
+  Tabs,
+  type TabsSlotRenderOptions,
+  type TabTriggerSlotProps,
+  type defaultTabsSlotRender,
+} from "expo-router/ui";
+import { useEffect, useState, type ReactNode } from "react";
+import {
+  Animated,
+  Easing,
+  Pressable,
+  StyleSheet,
+  View,
+  useWindowDimensions,
+  type GestureResponderEvent,
+  type PressableProps,
+} from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { TabIcon, Text, tabIcons } from "@/components/ui";
 import { ComposePopup } from "@/components/ledger/ComposePopup";
@@ -17,10 +35,30 @@ const TABS = [
   { name: "more", href: "/more", label: "전체", icon: "more" },
 ] as const;
 
+type TabDescriptor = Parameters<typeof defaultTabsSlotRender>[0];
+
 export default function TabsLayout() {
+  // Which way the tabs slide: toward a tab to the right of the last one, the screens move left.
+  // Derived during render (the React way to keep "the previous value").
+  const pathname = usePathname();
+  const focused = TABS.findIndex((tab) => tab.href === pathname);
+  const [nav, setNav] = useState({ index: Math.max(0, focused), dir: 0 });
+  if (focused >= 0 && focused !== nav.index) setNav({ index: focused, dir: Math.sign(focused - nav.index) });
+
+  const renderTab = (descriptor: TabDescriptor, { isFocused, loaded }: TabsSlotRenderOptions) => {
+    // Lazy, as by default: a tab is first drawn when it is first opened.
+    if (!loaded && !isFocused) return null;
+    return (
+      <TabScene key={descriptor.route.key} focused={isFocused} dir={nav.dir}>
+        {descriptor.render()}
+      </TabScene>
+    );
+  };
+
   return (
     <Tabs>
-      <TabSlot />
+      {/* Plain views (not native screens), so the tab being left stays drawn while it slides away. */}
+      <TabSlot detachInactiveScreens={false} renderFn={renderTab} />
       {/* Route declarations; the visible bar is drawn below. */}
       <TabList style={{ display: "none" }}>
         {TABS.map((tab) => (
@@ -31,6 +69,48 @@ export default function TabsLayout() {
       <ComposePopup />
       <FloatingTabBar />
     </Tabs>
+  );
+}
+
+const SLIDE_MS = 300;
+
+/**
+ * One tab's screen. Switching tabs slides the screens sideways: going to a tab on the right, the
+ * new screen comes in from the right as the old one leaves to the left (and the other way round).
+ * Tabs not on show wait off to the side, hidden from touch and screen readers.
+ */
+function TabScene({ focused, dir, children }: { focused: boolean; dir: number; children: ReactNode }) {
+  const { width } = useWindowDimensions();
+  const reduceMotion = useReducedMotion();
+  // A tab opened for the first time slides in from its side; the first one is just there.
+  const [x] = useState(() => new Animated.Value(focused ? dir * width : width));
+  useEffect(() => {
+    const to = focused ? 0 : -dir * width;
+    if (focused) x.setValue(dir * width);
+    if (reduceMotion || dir === 0) {
+      x.setValue(focused ? 0 : width);
+      return;
+    }
+    const anim = Animated.timing(x, {
+      toValue: to,
+      duration: SLIDE_MS,
+      easing: Easing.bezier(0.2, 0, 0, 1),
+      useNativeDriver: true,
+    });
+    anim.start();
+    return () => anim.stop();
+    // Runs when this tab gains or loses focus only: `dir` changing alone (a switch between two
+    // other tabs) must not move a tab that is off to the side.
+  }, [focused]); // eslint-disable-line react-hooks/exhaustive-deps
+  return (
+    <Animated.View
+      pointerEvents={focused ? "auto" : "none"}
+      importantForAccessibility={focused ? "auto" : "no-hide-descendants"}
+      accessibilityElementsHidden={!focused}
+      style={[StyleSheet.absoluteFill, { transform: [{ translateX: x }] }]}
+    >
+      {children}
+    </Animated.View>
   );
 }
 
@@ -126,8 +206,10 @@ type TabButtonProps = TabTriggerSlotProps & {
 // The trigger passes its ref and press handlers through props (asChild).
 function TabButton({ label, icon, isFocused, onPress, ...props }: TabButtonProps) {
   const { c } = useTheme();
-  // The current tab sits on a peach pill (the brand colour, as on the + button).
-  const color = isFocused ? c.onPrimaryContainer : c.text2;
+  // The current tab: its icon in the brand colour (sienna, the readable tone of the peach + button),
+  // its label bold. No background.
+  const iconColor = isFocused ? c.onPrimaryContainer : c.text2;
+  const color = isFocused ? c.text : c.text2;
   return (
     <Pressable
       {...(props as PressableProps)}
@@ -141,8 +223,8 @@ function TabButton({ label, icon, isFocused, onPress, ...props }: TabButtonProps
       accessibilityState={{ selected: isFocused }}
       style={({ pressed }) => [styles.tab, pressed && { opacity: opacity.tabPressed }]}
     >
-      <View style={[styles.tabInner, isFocused && { backgroundColor: c.primaryContainer }]}>
-        <TabIcon name={icon} color={color} />
+      <View style={styles.tabInner}>
+        <TabIcon name={icon} color={iconColor} />
         <Text
           variant="tabLabel"
           style={{ color, fontWeight: isFocused ? "700" : "500" }}
@@ -180,9 +262,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     gap: 2,
-    paddingHorizontal: space.md,
-    paddingVertical: 5,
-    borderRadius: radius.pill,
   },
   fab: {
     width: size.fab,

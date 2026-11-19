@@ -13,3 +13,4 @@ export * from "./Sheet";
 export * from "./Surface";
 export * from "./Text";
 export * from "./useSwipePager";
+export * from "./Wheel";

@@ -49,6 +49,17 @@ export function rememberComposeDate(iso: string) {
   lastDate = iso;
 }
 
+/**
+ * The 대분류 · 소분류 last picked, per type: a new record (or switching to that type) starts on it,
+ * if it still exists. Kept until the app restarts, like the date.
+ */
+type CategoryPick = { category: string; minor: string };
+const lastCategories: Partial<Record<"expense" | "income", CategoryPick>> = {};
+export const lastComposeCategory = (type: "expense" | "income") => lastCategories[type];
+export function rememberComposeCategory(type: "expense" | "income", pick: CategoryPick) {
+  lastCategories[type] = pick;
+}
+
 export function finishCompose(key: number) {
   if (!state.open && state.request?.key === key) set({ request: null, open: false });
 }

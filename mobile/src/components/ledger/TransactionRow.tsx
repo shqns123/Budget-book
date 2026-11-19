@@ -40,7 +40,8 @@ export function TransactionRow({
       icon={item.type === "transfer" ? "transfer" : item.type === "income" ? "income" : "expense"}
       iconTone={item.type === "transfer" ? "neutral" : item.type === "income" ? "income" : "expense"}
       title={item.name}
-      meta={`${categoryText(item)} · ${accountText(accounts, item)}`}
+      // A transfer is just "from → to"; others "분류 · 소분류 · 통장".
+      meta={item.type === "transfer" ? accountText(accounts, item) : `${categoryText(item)} · ${accountText(accounts, item)}`}
       trailing={amount}
       trailingColor={item.type === "income" ? "income" : item.type === "transfer" ? "text2" : "text"}
       trailingMeta={shortDate(item.date)}

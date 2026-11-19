@@ -6,6 +6,8 @@
 //   npm run build:apk -- --arch arm64      (phone | arm64 | emulator | all; default phone)
 //   npm run build:apk -- --version-code 5  (default: next number after the newest APK in dist/)
 //   npm run build:apk -- --clean           (regenerate android/ from scratch)
+//   npm run build:aab                      → dist/budget-book-v<versionCode>.aab  (release app as an
+//                                            Android App Bundle, for Google Play; every CPU type)
 //
 // Signing: with credentials.json + its keystore (downloaded with `npx eas-cli@latest credentials
 // -p android` → Download credentials; both git-ignored), the APK is signed with the EAS key, so it
@@ -39,20 +41,24 @@ const ARCHS = {
   emulator: "x86_64",
   all: "armeabi-v7a,arm64-v8a,x86,x86_64",
 };
-const arch = flag("--arch") ?? "phone";
+// --- Android App Bundle (Google Play) instead of an APK: Play hands each phone only its CPU's part,
+// so a bundle carries every type.
+const bundle = args.includes("--bundle");
+const arch = flag("--arch") ?? (bundle ? "all" : "phone");
 if (!ARCHS[arch]) fail(`--arch는 ${Object.keys(ARCHS).join(" | ")} 중 하나여야 해요.`);
 
 // --- Which app: production (release APK) or development (dev app, debug build). See app.config.ts.
 const variant = args.includes("--variant") ? flag("--variant") : "production";
 if (variant !== "production" && variant !== "development") fail("--variant는 production | development 중 하나여야 해요.");
 const isDev = variant === "development";
+if (bundle && isDev) fail("--bundle은 정식 앱(production)만 만들 수 있어요.");
 
 // --- versionCode: must be higher than the app already on the phone, or Android refuses the update.
 let versionCode = Number(flag("--version-code") ?? 0);
 if (!versionCode) {
   let last = 0;
   for (const f of existsSync(join(root, "dist")) ? readdirSync(join(root, "dist")) : []) {
-    const m = /^budget-book-v(\d+)\.apk$/.exec(f);
+    const m = /^budget-book-v(\d+)\.(apk|aab)$/.exec(f);
     if (m) last = Math.max(last, Number(m[1]));
   }
   versionCode = last + 1;
@@ -188,7 +194,7 @@ run(`npx expo prebuild --platform android --no-install${clean ? " --clean" : ""}
 writeFileSync(variantMark, variant);
 
 const gradleArgs = [
-  isDev ? "assembleDebug" : "assembleRelease",
+  isDev ? "assembleDebug" : bundle ? "bundleRelease" : "assembleRelease",
   "--console=plain",
   "-Dorg.gradle.internal.http.socketTimeout=120000",
   "-Dorg.gradle.internal.http.connectionTimeout=60000",
@@ -200,8 +206,14 @@ if (isWin) execFileSync("cmd.exe", ["/d", "/c", join(androidDir, "gradlew.bat"),
 else execFileSync("./gradlew", gradleArgs, { cwd: androidDir, env, stdio: "inherit" });
 
 const buildType = isDev ? "debug" : "release";
-const built = join(androidDir, "app", "build", "outputs", "apk", buildType, `app-${buildType}.apk`);
+const built = bundle
+  ? join(androidDir, "app", "build", "outputs", "bundle", "release", "app-release.aab")
+  : join(androidDir, "app", "build", "outputs", "apk", buildType, `app-${buildType}.apk`);
 mkdirSync(join(root, "dist"), { recursive: true });
-const target = join(root, "dist", isDev ? "budget-book-dev.apk" : `budget-book-v${versionCode}.apk`);
+const target = join(
+  root,
+  "dist",
+  isDev ? "budget-book-dev.apk" : `budget-book-v${versionCode}.${bundle ? "aab" : "apk"}`,
+);
 copyFileSync(built, target);
-console.log(`\nAPK: ${target}`);
+console.log(`\n${bundle ? "AAB" : "APK"}: ${target}`);
