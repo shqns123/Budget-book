@@ -3530,11 +3530,33 @@ a {
 }
 .month-menu.wheel-menu {
   width: 240px;
+  left: 0;
+  right: auto;
 }
 .account-menu.wheel-menu {
   width: 260px;
   max-height: none;
   overflow: visible;
+}
+.header-controls .account-menu.wheel-menu {
+  left: 0;
+  right: auto;
+}
+@media (max-width: 800px) {
+  .header-controls {
+    position: relative;
+  }
+  .header-controls .month-picker {
+    position: static;
+  }
+  .header-controls .wheel-menu {
+    max-width: 100%;
+  }
+  .header-controls .month-menu.wheel-menu,
+  .header-controls .account-menu.wheel-menu {
+    left: auto;
+    right: 0;
+  }
 }
 .month-menu > .wheel-row {
   position: relative;
@@ -3543,9 +3565,11 @@ a {
 .wheel-row .wheel:first-of-type {
   flex: 1.3;
 }
+.wheel-row > .wheel {
+  flex: 1;
+}
 .wheel {
   position: relative;
-  flex: 1;
   min-width: 0;
 }
 .wheel-band {
@@ -3568,6 +3592,9 @@ a {
   outline: none;
   mask-image: linear-gradient(transparent, #000 30%, #000 70%, transparent);
 }
+.wheel-list[data-dragging] {
+  scroll-snap-type: none;
+}
 .wheel-list::-webkit-scrollbar {
   display: none;
 }
@@ -3586,11 +3613,17 @@ a {
   font-size: 15px;
   font-weight: 500;
   color: var(--ink);
+  cursor: grab;
+  user-select: none;
+}
+.wheel-list[data-dragging] .wheel-item {
+  cursor: grabbing;
+}
+.wheel-item-label {
+  min-width: 0;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  cursor: pointer;
-  user-select: none;
 }
 .wheel-item[aria-selected="true"] {
   font-weight: 700;
