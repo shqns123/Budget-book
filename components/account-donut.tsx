@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState, type PointerEvent } from "rea
 import { ChevronDown } from "lucide-react";
 import { Wheel } from "@/components/wheel-picker";
 import { type Account, type Transaction, won } from "@/lib/ledger";
-import { donutGeometry } from "@/mobile/src/lib/donut-segment";
+import { donutGeometry } from "@/lib/donut-segment";
 
 /**
  * Categorical colors in the same order as the app's light palette. Every slice also has a
