@@ -6,7 +6,8 @@ import {
   verifySessionToken,
 } from "@/lib/auth-shared";
 
-const publicPaths = new Set(["/login", "/manifest.webmanifest", "/sw.js", "/offline.html"]);
+// /privacy: the privacy policy linked from the Google Play listing (must open without signing in).
+const publicPaths = new Set(["/login", "/privacy", "/manifest.webmanifest", "/sw.js", "/offline.html"]);
 
 export async function middleware(request: NextRequest) {
   const { pathname, search } = request.nextUrl;

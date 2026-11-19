@@ -12,7 +12,8 @@ export function LaunchOverview() {
   useEffect(() => {
     if (sessionStorage.getItem(SESSION_KEY)) return;
     sessionStorage.setItem(SESSION_KEY, "true");
-    if (pathname !== "/" && pathname !== "/login") router.replace("/");
+    // /privacy is opened from the Google Play listing by people who aren't signed in: leave it be.
+    if (pathname !== "/" && pathname !== "/login" && pathname !== "/privacy") router.replace("/");
   }, [pathname, router]);
 
   return null;

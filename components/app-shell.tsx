@@ -6,11 +6,8 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
   BarChart3,
   ChevronDown,
-  ChevronLeft,
-  ChevronRight,
   CirclePlus,
   CreditCard,
-  Landmark,
   LogOut,
   Menu,
   PiggyBank,
@@ -21,6 +18,7 @@ import {
 import { accounts, hydrateLedgerSettings } from "@/lib/ledger";
 import { readDefaultAccountIds } from "@/lib/budgets";
 import { readSharedState } from "@/lib/shared-state";
+import { Wheel, WheelRow, type WheelItem } from "@/components/wheel-picker";
 
 type Scope = {
   selected: string[];
@@ -38,13 +36,43 @@ const nav = [
   { href: "/savings", label: "저축 내역", icon: PiggyBank },
   { href: "/settings", label: "가계부 설정", icon: Settings },
 ];
-const icons = {
-  bank: Landmark,
-  card: CreditCard,
-  loan: Landmark,
-  savings: PiggyBank,
-  cash: WalletCards,
-};
+/** Years on the wheel: ten back from the earlier of this year and the picked one, five ahead. */
+function yearItems(picked: number): WheelItem<number>[] {
+  const now = new Date().getFullYear();
+  const from = Math.min(now, picked) - 10;
+  const to = Math.max(now, picked) + 5;
+  return Array.from({ length: to - from + 1 }, (_, i) => ({
+    value: from + i,
+    label: `${from + i}년`,
+  }));
+}
+const MONTH_ITEMS: WheelItem<number>[] = Array.from({ length: 12 }, (_, i) => ({
+  value: i + 1,
+  label: `${i + 1}월`,
+}));
+
+/** Year · month wheels. The year list is fixed when the menu opens, so the wheel never shifts. */
+function MonthWheels({ month, onPick }: { month: string; onPick: (next: string) => void }) {
+  const [years] = useState(() => yearItems(Number(month.slice(0, 4))));
+  return (
+    <WheelRow>
+      <Wheel
+        bare
+        label="연도"
+        items={years}
+        value={Number(month.slice(0, 4))}
+        onChange={(year) => onPick(`${year}-${month.slice(5)}`)}
+      />
+      <Wheel
+        bare
+        label="월"
+        items={MONTH_ITEMS}
+        value={Number(month.slice(5))}
+        onChange={(m) => onPick(`${month.slice(0, 4)}-${String(m).padStart(2, "0")}`)}
+      />
+    </WheelRow>
+  );
+}
 
 export function AppShell({
   children,
@@ -131,24 +159,15 @@ export function AppShell({
       JSON.stringify(selected),
     );
   };
-  const toggle = (id: string) =>
-    updateSelected(
-      selected.includes(id)
-        ? selected.filter((item) => item !== id)
-        : [...selected, id],
-    );
   const monthLabel = `${month.slice(0, 4)}년 ${Number(month.slice(5))}월`;
-  const changeMonth = (next: string) => {
+  /** Picks a month and keeps the menu open (the wheels turn it as they come to rest). */
+  const pickMonth = (next: string) => {
     setMonth(next);
     window.localStorage.setItem("ledger-month", next);
-    setShowMonths(false);
   };
-  const shiftMonth = (direction: number) => {
-    const [year, currentMonth] = month.split("-").map(Number);
-    const date = new Date(year, currentMonth - 1 + direction, 1);
-    changeMonth(
-      `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`,
-    );
+  const changeMonth = (next: string) => {
+    pickMonth(next);
+    setShowMonths(false);
   };
   const logout = async () => {
     await fetch("/api/auth/logout", { method: "POST" });
@@ -215,37 +234,11 @@ export function AppShell({
                   {monthLabel} <ChevronDown size={15} />
                 </button>
                 {showMonths && (
-                  <div className="month-menu">
-                    <header>
-                      <button
-                        aria-label="이전 달"
-                        onClick={() => shiftMonth(-1)}
-                      >
-                        <ChevronLeft size={16} />
-                      </button>
-                      <b>{month.slice(0, 4)}년</b>
-                      <button
-                        aria-label="다음 달"
-                        onClick={() => shiftMonth(1)}
-                      >
-                        <ChevronRight size={16} />
-                      </button>
-                    </header>
-                    <div>
-                      {Array.from(
-                        { length: 12 },
-                        (_, index) =>
-                          `${month.slice(0, 4)}-${String(index + 1).padStart(2, "0")}`,
-                      ).map((value) => (
-                        <button
-                          key={value}
-                          onClick={() => changeMonth(value)}
-                          className={value === month ? "chosen" : ""}
-                        >
-                          {Number(value.slice(5))}월
-                        </button>
-                      ))}
-                    </div>
+                  <div className="month-menu wheel-menu">
+                    <MonthWheels month={month} onPick={pickMonth} />
+                    <button className="wheel-done" onClick={() => setShowMonths(false)}>
+                      완료
+                    </button>
                   </div>
                 )}
               </div>
@@ -262,40 +255,28 @@ export function AppShell({
                     <ChevronDown size={15} />
                   </button>
                   {showAccounts && (
-                    <div className="account-menu">
-                      <div className="account-menu-actions">
-                        <button
-                          onClick={() => updateSelected([])}
-                          className="all-account"
-                        >
-                          전체 통장
-                        </button>
-                        <button
-                          className="account-selection-save"
-                          onClick={saveSelected}
-                        >
-                          저장
-                        </button>
-                      </div>
-                      <div className="account-menu-list">
-                        {accounts.map((account) => {
-                          const Icon = icons[account.type];
-                          return (
-                            <label key={account.id}>
-                              <input
-                                type="checkbox"
-                                checked={selected.includes(account.id)}
-                                onChange={() => toggle(account.id)}
-                              />
-                              <Icon size={16} />
-                              <span>
-                                {account.name}
-                                <small>{account.kind}</small>
-                              </span>
-                            </label>
-                          );
-                        })}
-                      </div>
+                    <div className="account-menu wheel-menu">
+                      <p className="wheel-hint">
+                        선택한 통장의 거래만 합산해요. 저장하면 다음에도 유지돼요.
+                      </p>
+                      <Wheel
+                        label="통장"
+                        items={[
+                          { value: "", label: "전체 통장" },
+                          ...accounts.map((account) => ({ value: account.id, label: account.name })),
+                        ]}
+                        value={selected.length === 1 ? selected[0] : ""}
+                        onChange={(id) => updateSelected(id ? [id] : [])}
+                      />
+                      <button
+                        className="wheel-done"
+                        onClick={() => {
+                          saveSelected();
+                          setShowAccounts(false);
+                        }}
+                      >
+                        저장
+                      </button>
                     </div>
                   )}
                 </div>
