@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { useTheme } from "@/theme/theme";
 import { radius, size, space } from "@/theme/tokens";
@@ -7,6 +7,7 @@ import { Text } from "./Text";
 
 export type WheelItem<T extends string | number> = { value: T; label: string };
 
+/** The value sets the initial selection each time the surrounding menu mounts. */
 export function Wheel<T extends string | number>({ items, value, onChange, flex = 1, accessibilityLabel }: {
   items: WheelItem<T>[];
   value: T;
@@ -18,7 +19,6 @@ export function Wheel<T extends string | number>({ items, value, onChange, flex 
   const { c } = useTheme();
   const [selected, setSelected] = useState(value);
   const [open, setOpen] = useState(false);
-  useEffect(() => setSelected(value), [value]);
   const current = items.find((item) => item.value === selected);
   return (
     <View style={{ flex, minWidth: 0 }}>
