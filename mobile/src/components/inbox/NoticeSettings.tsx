@@ -171,6 +171,10 @@ function SettingsBody({
         </Section>
       ) : null}
 
+      <Text variant="footnote" weight="400" color="text2">
+        새 카드·계좌는 카드사·은행 이름이 같은 통장으로 먼저 채워요. 같은 카드사 카드가 여러 장이면 통장 이름이나
+        메모에 카드 끝 4자리(예: 2222)를 적어 두세요. 등록하면 그 통장으로 연결돼요.
+      </Text>
       <Section title="연결된 카드·계좌">
         {linked.length ? (
           <View style={{ gap: space.md, padding: space.lg }}>
@@ -194,7 +198,7 @@ function SettingsBody({
         ) : (
           <View style={{ padding: space.lg }}>
             <Text variant="footnote" weight="400" color="text2">
-              대기함에서 처음 등록할 때 고른 통장이 그 카드·계좌에 연결돼요.
+              아직 연결된 카드·계좌가 없어요.
             </Text>
           </View>
         )}

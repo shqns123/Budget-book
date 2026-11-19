@@ -101,6 +101,9 @@ export function InboxCard({
         {parsed && parsed.installment > 0 ? <Tag label={`할부 ${parsed.installment}개월`} /> : null}
         {parsed && parsed.currency !== "KRW" ? <Tag label={`외화 ${parsed.currency}`} tone="warn" /> : null}
         {!view.linked && parsed ? <Tag label="통장 미연결" tone="warn" /> : null}
+        {view.linked && classification.accountGuessed && !item.edits.accountId ? (
+          <Tag label="통장 추정 · 등록하면 연결" />
+        ) : null}
         {view.paired ? <Tag label="입금 알림과 묶음" /> : null}
       </View>
       <Text variant="footnote" weight="400" color="text2">

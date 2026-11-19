@@ -70,6 +70,8 @@ export type Classification = {
   cancelOf?: string;
   /** A 반복 항목 that fits on account, day and amount but isn't confirmed yet. */
   suggestion?: RecurringTemplate;
+  /** The account was guessed from the card / bank name (not linked yet): 등록 links it. */
+  accountGuessed?: boolean;
 };
 
 export type ClassifyContext = {
@@ -88,6 +90,65 @@ const monthOf = (iso: string) => iso.slice(0, 7).replace("-", ".");
 
 /** An account's name without the generic words: "생활비 통장" → "생활비". */
 const accountCore = (name: string) => compact(name).replace(/통장|계좌|카드|은행|뱅크|입출금|저축|적금/g, "");
+
+/** Card companies and banks by the words their names are written with ("KB국민카드", "국민 체크"). */
+const ISSUERS = [
+  ["kb", "국민"],
+  ["신한"],
+  ["삼성"],
+  ["현대"],
+  ["롯데"],
+  ["하나"],
+  ["우리"],
+  ["nh", "농협"],
+  ["카카오"],
+  ["토스"],
+  ["ibk", "기업"],
+  ["bc", "비씨"],
+  ["씨티", "citi"],
+  ["sc", "제일"],
+  ["케이뱅크", "kbank"],
+  ["새마을"],
+  ["우체국"],
+  ["수협"],
+  ["부산"],
+  ["대구", "im뱅크"],
+  ["경남"],
+  ["광주"],
+  ["전북"],
+  ["제주"],
+];
+
+/** The issuer groups a name mentions: "KB국민카드" → the KB group. */
+const issuersIn = (name: string) => {
+  const text = compact(name);
+  return ISSUERS.filter((words) => words.some((w) => text.includes(w)));
+};
+
+/**
+ * The ledger account a card / account in a notice most likely is, before it is linked: same kind
+ * (card with card, bank with bank), the same card company or bank in the name, and when several
+ * fit, the one whose name or 메모 has the card's last four digits. Only an unambiguous match.
+ */
+export function guessAccount(source: ParsedNotice["source"], accounts: Account[]) {
+  const [issuer = "", number = ""] = source.key.split("|");
+  const kinds = source.kind === "card" ? ["card"] : ["bank", "savings"];
+  const sameKind = accounts.filter((a) => !a.hidden && kinds.includes(a.type));
+  const groups = issuersIn(issuer);
+  const core = compact(issuer).replace(/카드|체크|은행|뱅크|페이|증권/g, "");
+  const byIssuer = sameKind.filter((a) => {
+    const name = compact(a.name);
+    return groups.length ? issuersIn(a.name).some((g) => groups.includes(g)) : core.length >= 2 && name.includes(core);
+  });
+  // "2222", or a masked "1*2*" where * is any digit.
+  const digits = number && new RegExp(number.replace(/\*/g, "\\d"));
+  const byNumber = (list: Account[]) => (digits ? list.filter((a) => digits.test(`${a.name} ${a.memo ?? ""}`)) : []);
+  const numbered = byNumber(byIssuer);
+  if (numbered.length === 1) return numbered[0].id;
+  if (byIssuer.length === 1) return byIssuer[0].id;
+  const anyNumbered = byNumber(sameKind);
+  return anyNumbered.length === 1 ? anyNumbered[0].id : "";
+}
 
 function daysApart(day: number, iso: string) {
   const [year, month, date] = iso.split("-").map(Number);
@@ -195,11 +256,25 @@ function findCancelled(notice: ParsedNotice, accountId: string, ctx: ClassifyCon
   );
 }
 
+/** The ledger account a notice's card / account is: linked before, else guessed by its name. */
+function sourceAccount(notice: ParsedNotice, ctx: ClassifyContext) {
+  const mapped = ctx.rules.sources[notice.source.key];
+  if (mapped && ctx.accounts.some((a) => a.id === mapped)) return { accountId: mapped, guessed: false };
+  const guessed = guessAccount(notice.source, ctx.accounts);
+  return { accountId: guessed, guessed: Boolean(guessed) };
+}
+
 export function classify(notice: ParsedNotice, ctx: ClassifyContext): Classification {
+  const source = sourceAccount(notice, ctx);
+  const result = classifyWith(notice, ctx, source.accountId);
+  // Flag the guess only where the draft still uses it (a move into this account keeps it as 받는 통장).
+  const used = result.draft.accountId === source.accountId || result.draft.toAccountId === source.accountId;
+  return source.guessed && used ? { ...result, accountGuessed: true } : result;
+}
+
+function classifyWith(notice: ParsedNotice, ctx: ClassifyContext, accountId: string): Classification {
   const { rules, accounts } = ctx;
   const known = (id?: string) => Boolean(id && accounts.some((a) => a.id === id));
-  const mapped = rules.sources[notice.source.key];
-  const accountId = known(mapped) ? mapped : "";
   const key = counterpartyKey(notice.counterparty);
   const base: NoticeDraft = {
     type: notice.direction === "in" ? "income" : "expense",
