@@ -1,0 +1,17 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+  <application>
+    <!--
+      Reads payment notifications (card approvals, bank withdrawals) into the app's 대기함.
+      Android binds it only after the user turns on 알림 접근 for the app in system settings.
+    -->
+    <service
+      android:name="expo.modules.notificationcapture.NotificationCaptureService"
+      android:label="결제 알림 기록"
+      android:exported="true"
+      android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+      <intent-filter>
+        <action android:name="android.service.notification.NotificationListenerService" />
+      </intent-filter>
+    </service>
+  </application>
+</manifest>

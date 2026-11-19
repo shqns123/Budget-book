@@ -51,6 +51,11 @@ export type Transaction = {
    * and editing or deleting the expense updates or removes it. The web app does the same.
    */
   linkedTo?: string;
+  /**
+   * The 반복 항목 this record was registered from (일괄 등록 or a payment notice), so a month
+   * never gets the same 반복 항목 twice.
+   */
+  recurringId?: string;
 };
 
 /** Transactions as lists show them: without transfers recorded together with an expense. */

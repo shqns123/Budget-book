@@ -252,6 +252,7 @@ function TransactionsContent() {
       type: item.type ?? "expense",
       // Expenses registered from the 반복 list are the fixed costs.
       ...((item.type ?? "expense") === "expense" ? { fixed: true } : {}),
+      recurringId: item.id,
     }));
     const next = [...recordsToAdd, ...records];
     if (await persistRecords(next)) {
@@ -466,6 +467,7 @@ function TransactionsContent() {
       // Keep what the form doesn't edit (memo, the fixed-cost mark from the 반복 list).
       ...(editing?.memo ? { memo: editing.memo } : {}),
       ...(editing?.fixed !== undefined ? { fixed: editing.fixed } : {}),
+      ...(editing?.recurringId ? { recurringId: editing.recurringId } : {}),
     };
     const edited = editingId
       ? records.map((item) => (item.id === editingId ? record : item))

@@ -24,8 +24,17 @@ import {
   PopupTool,
 } from "@/components/ui";
 import { apiFetch } from "@/lib/api";
-import { closeCompose, finishCompose, lastComposeDate, rememberComposeDate, useCompose } from "@/lib/compose";
+import {
+  closeCompose,
+  finishCompose,
+  lastComposeCategory,
+  lastComposeDate,
+  rememberComposeCategory,
+  rememberComposeDate,
+  useCompose,
+} from "@/lib/compose";
 import { todayIso } from "@/lib/dates";
+import { registeredThisMonth } from "@/lib/notices/classify";
 import {
   categoryOptions,
   isDebtAccount,
@@ -38,7 +47,7 @@ import {
 import { useLedger } from "@/store/ledger-store";
 import { usePrefs } from "@/store/prefs-store";
 import { useTheme } from "@/theme/theme";
-import { radius, size, space } from "@/theme/tokens";
+import { radius, space } from "@/theme/tokens";
 
 type ImageDraft = {
   id: string;
@@ -59,7 +68,29 @@ const TYPE_OPTIONS = [
   { value: "transfer" as const, label: "이동" },
 ];
 
+/** Where a new record's 대분류 · 소분류 start: the last picked ones if they still exist, else the first. */
+function startingCategory(options: Record<string, string[]>, type: "expense" | "income") {
+  const last = lastComposeCategory(type);
+  if (last && options[last.category]) {
+    const minors = options[last.category];
+    return { category: last.category, minorCategory: minors.includes(last.minor) ? last.minor : (minors[0] ?? "") };
+  }
+  const first = Object.keys(options)[0] ?? "";
+  return { category: first, minorCategory: options[first]?.[0] ?? "" };
+}
+
 const isIsoDate = (value?: string) => Boolean(value && /^\d{4}-\d{2}-\d{2}$/.test(value));
+
+/**
+ * A JPEG file part for FormData that Expo's fetch can send: it reads `name` and `type` for the
+ * part headers and `bytes()` for the body (see expo/src/winter/fetch/convertFormData).
+ */
+function jpegPart(base64: string, name: string) {
+  const binary = atob(base64);
+  const data = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) data[i] = binary.charCodeAt(i);
+  return { name, type: "image/jpeg", bytes: async () => data } as unknown as Blob;
+}
 
 type Params = { id?: string; account?: string; date?: string };
 
@@ -113,8 +144,7 @@ function useInitialForm(params: Params) {
     }
     const requested = accounts.find((a) => a.id === params.account)?.id;
     const from = requested ?? accounts.find((a) => !isDebtAccount(accounts, a.id))?.id ?? accounts[0]?.id ?? "";
-    const opts = categoryOptions(categories, "expense");
-    const category = Object.keys(opts)[0] ?? "";
+    const start = startingCategory(categoryOptions(categories, "expense"), "expense");
     return {
       editing: undefined,
       type: "expense" as TransactionType,
@@ -123,8 +153,7 @@ function useInitialForm(params: Params) {
       date: isIsoDate(params.date) ? params.date! : (lastComposeDate() ?? todayIso()),
       accountId: from,
       toAccountId: accounts.find((a) => a.id !== from)?.id ?? "",
-      category,
-      minorCategory: opts[category]?.[0] ?? "",
+      ...start,
     };
   });
   return initial;
@@ -172,6 +201,8 @@ function ComposeForm({ params, popup }: { params: Params; popup: PopupFrame }) {
   const amountRef = useRef<ComponentRef<typeof TextInput>>(null);
   const nameRef = useRef<ComponentRef<typeof TextInput>>(null);
   const [recurringBatch, setRecurringBatch] = useState<RecurringTemplate[] | null>(null);
+  // 반복 항목 already in this month (일괄 등록 earlier, or a payment notice): left out of the batch.
+  const [recurringDone, setRecurringDone] = useState(0);
   const [imageBatch, setImageBatch] = useState<ImageDraft[] | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
   const [imageError, setImageError] = useState("");
@@ -185,10 +216,15 @@ function ComposeForm({ params, popup }: { params: Params; popup: PopupFrame }) {
   const changeType = (next: TransactionType) => {
     setType(next);
     if (next === "transfer") return;
-    const opts = categoryOptions(categories, next);
-    const first = Object.keys(opts)[0] ?? "";
-    setCategory(first);
-    setMinorCategory(opts[first]?.[0] ?? "");
+    const start = startingCategory(categoryOptions(categories, next), next);
+    setCategory(start.category);
+    setMinorCategory(start.minorCategory);
+  };
+  // Remember picks for the next record (only for expense / income).
+  const pickCategory = (value: string, minor: string) => {
+    setCategory(value);
+    setMinorCategory(minor);
+    if (type !== "transfer") rememberComposeCategory(type, { category: value, minor });
   };
 
   const persist = async (records: Transaction[]) => {
@@ -224,6 +260,7 @@ function ComposeForm({ params, popup }: { params: Params; popup: PopupFrame }) {
       type,
       ...(editing?.memo ? { memo: editing.memo } : {}),
       ...(editing?.fixed !== undefined ? { fixed: editing.fixed } : {}),
+      ...(editing?.recurringId ? { recurringId: editing.recurringId } : {}),
     };
     const transfer: Transaction | null = withLink
       ? {
@@ -265,6 +302,7 @@ function ComposeForm({ params, popup }: { params: Params; popup: PopupFrame }) {
       type: item.type ?? "expense",
       // Recurring expenses are the fixed costs.
       ...((item.type ?? "expense") === "expense" ? { fixed: true } : {}),
+      recurringId: item.id,
     }));
     if (await persist([...records, ...data.transactions])) {
       include(records.flatMap((r) => [r.accountId, r.toAccountId]));
@@ -290,12 +328,10 @@ function ComposeForm({ params, popup }: { params: Params; popup: PopupFrame }) {
         const context = ImageManipulator.manipulate(asset.uri);
         if (!asset.width || asset.width > 1600) context.resize({ width: 1600, height: null });
         const rendered = await context.renderAsync();
-        const saved = await rendered.saveAsync({ format: SaveFormat.JPEG, compress: 0.8 });
-        form.append("images", {
-          uri: saved.uri,
-          name: `photo-${index + 1}.jpg`,
-          type: "image/jpeg",
-        } as unknown as Blob);
+        const saved = await rendered.saveAsync({ format: SaveFormat.JPEG, compress: 0.8, base64: true });
+        // Expo's fetch (the global fetch since SDK 58) can't send React Native's `{ uri }` file
+        // parts: it throws before the request leaves the phone. Hand it the bytes instead.
+        form.append("images", jpegPart(saved.base64 ?? "", `photo-${index + 1}.jpg`));
       }
       form.append(
         "context",
@@ -413,7 +449,11 @@ function ComposeForm({ params, popup }: { params: Params; popup: PopupFrame }) {
                       // Pressed again, it goes back to the record form.
                       if (recurringBatch) return setRecurringBatch(null);
                       setImageBatch(null);
-                      setRecurringBatch(data.recurring.map((item) => ({ ...item })));
+                      const open = data.recurring.filter(
+                        (item) => !registeredThisMonth(item, `${month}-01`, data.transactions),
+                      );
+                      setRecurringDone(data.recurring.length - open.length);
+                      setRecurringBatch(open.map((item) => ({ ...item })));
                     }}
                   />
                 )}
@@ -522,6 +562,7 @@ function ComposeForm({ params, popup }: { params: Params; popup: PopupFrame }) {
           <View style={{ padding: space.lg, gap: space.lg }}>
             <Text variant="footnote" weight="400" color="text2">
               이번 달에 등록할 항목만 남기고 내용을 수정한 뒤 일괄 등록하세요.
+              {recurringDone > 0 ? ` 이번 달에 이미 등록된 ${recurringDone}건은 뺐어요.` : ""}
             </Text>
             {/* Each item folds open to edit; the trash on its side leaves it out of this month. */}
             {recurringBatch.map((item) => (
@@ -627,23 +668,31 @@ function ComposeForm({ params, popup }: { params: Params; popup: PopupFrame }) {
                     label="대분류"
                     value={category}
                     options={Object.keys(options).map((k) => ({ value: k, label: k }))}
-                    onChange={(value) => {
-                      setCategory(value);
-                      setMinorCategory(options[value]?.[0] ?? "");
-                    }}
+                    onChange={(value) => pickCategory(value, options[value]?.[0] ?? "")}
                   />
                   <SelectField
                     label="소분류"
                     value={minorCategory}
                     options={(options[category] ?? []).map((k) => ({ value: k, label: k }))}
-                    onChange={setMinorCategory}
+                    onChange={(minor) => pickCategory(category, minor)}
                   />
                   {type === "income" ? (
                     <SelectField label="입금 통장" value={accountId} options={accountOptions} onChange={setAccountId} />
                   ) : (
-                    <View style={styles.accountRow}>
-                      <SelectField label="출금 통장" value={accountId} options={accountOptions} onChange={setAccountId} />
-                      <LinkToggle on={linkOn} onPress={() => setLinkOn((v) => !v)} />
+                    <View style={{ gap: space.sm }}>
+                      {/* The label line carries the "자금 이동" check on its right. */}
+                      <View style={styles.labelRow}>
+                        <Text variant="footnote" color="text2">
+                          출금 통장
+                        </Text>
+                        <LinkToggle on={linkOn} onPress={() => setLinkOn((v) => !v)} />
+                      </View>
+                      <SelectField
+                        accessibilityLabel="출금 통장"
+                        value={accountId}
+                        options={accountOptions}
+                        onChange={setAccountId}
+                      />
                     </View>
                   )}
                   {type === "expense" && linkOn ? (
@@ -672,22 +721,20 @@ function ComposeForm({ params, popup }: { params: Params; popup: PopupFrame }) {
   );
 }
 
-/** The "자금 이동 같이 기록" switch beside 출금 통장. */
+/** The "자금 이동 같이 기록" check on the right of the 출금 통장 label line. */
 function LinkToggle({ on, onPress }: { on: boolean; onPress: () => void }) {
   const { c } = useTheme();
   return (
     <Pressable
       onPress={onPress}
+      hitSlop={12}
       accessibilityRole="checkbox"
       accessibilityState={{ checked: on }}
       accessibilityLabel="자금 이동 같이 기록"
-      style={({ pressed }) => [
-        styles.linkToggle,
-        { backgroundColor: on ? c.primaryContainer : pressed ? c.fill : c.subtle },
-      ]}
+      style={({ pressed }) => [styles.linkToggle, pressed && { opacity: 0.6 }]}
     >
-      <Icon name={on ? "checkbox" : "checkboxEmpty"} size={20} color={on ? c.onPrimaryContainer : c.tertiary} />
-      <Text variant="subhead" weight="600" color={on ? "onPrimaryContainer" : "text2"}>
+      <Icon name={on ? "checkbox" : "checkboxEmpty"} size={18} color={on ? c.onPrimaryContainer : c.tertiary} />
+      <Text variant="footnote" color={on ? "onPrimaryContainer" : "text2"}>
         자금 이동
       </Text>
     </Pressable>
@@ -695,15 +742,8 @@ function LinkToggle({ on, onPress }: { on: boolean; onPress: () => void }) {
 }
 
 const styles = StyleSheet.create({
-  accountRow: { flexDirection: "row", alignItems: "flex-end", gap: space.sm },
-  linkToggle: {
-    minHeight: size.control,
-    borderRadius: radius.control,
-    paddingHorizontal: space.md,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-  },
+  labelRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  linkToggle: { flexDirection: "row", alignItems: "center", gap: 4 },
   linkBox: { borderRadius: radius.card, padding: space.lg, gap: space.md },
   draft: { borderRadius: radius.card, padding: space.lg, gap: space.md },
   draftHead: { flexDirection: "row", alignItems: "center", gap: space.sm },

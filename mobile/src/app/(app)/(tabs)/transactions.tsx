@@ -24,6 +24,7 @@ import {
 } from "@/components/ui";
 import { monthLabel, spokenDate } from "@/lib/dates";
 import { linkedTransfer, listed, typeLabel, type Transaction, type TransactionType } from "@/lib/ledger";
+import { useInbox } from "@/store/inbox-store";
 import { useLedger } from "@/store/ledger-store";
 import { usePrefs } from "@/store/prefs-store";
 import { useTheme } from "@/theme/theme";
@@ -38,6 +39,7 @@ export default function TransactionsScreen() {
   const { data, accounts, save } = useLedger();
   const { month, sortByDate, setSortByDate } = usePrefs();
   const { selected } = useScopeSelection("transactions");
+  const inbox = useInbox();
   const [query, setQuery] = useState("");
   const [showFilters, setShowFilters] = useState(false);
   const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
@@ -90,36 +92,48 @@ export default function TransactionsScreen() {
         <ChipRow>
           <MonthChip />
           <AccountChip scope="transactions" />
+          {inbox.supported || inbox.items.length ? (
+            <Chip
+              icon="inbox"
+              count={inbox.items.length}
+              selected={inbox.items.length > 0}
+              accessibilityLabel={`결제 알림 대기함, ${inbox.items.length}건`}
+              onPress={() => router.push("/inbox")}
+            />
+          ) : null}
         </ChipRow>
       }
     >
-      <View style={{ gap: space.md }}>
-        <TextField
-          value={query}
-          onChangeText={setQuery}
-          placeholder="내역 검색"
-          accessibilityLabel="내역 검색"
-          returnKeyType="search"
-        />
-        <ChipRow>
-          <Chip
-            label="필터"
-            icon="filter"
-            selected={activeFilters > 0}
-            count={activeFilters}
-            onPress={() => setShowFilters(true)}
-          />
-          <Chip
-            label={sortByDate ? "날짜순" : "입력순"}
-            icon="sort"
-            selected={sortByDate}
-            accessibilityLabel={`정렬, ${sortByDate ? "날짜 최신순" : "입력한 순서"}`}
-            onPress={() => setSortByDate(!sortByDate)}
-          />
-        </ChipRow>
-      </View>
+      <TextField
+        value={query}
+        onChangeText={setQuery}
+        placeholder="내역 검색"
+        accessibilityLabel="내역 검색"
+        returnKeyType="search"
+      />
 
-      <Section title={`${monthLabel(month)} · ${visible.length}건`}>
+      {/* 필터 and the sort order sit on the list's heading line, right of the month and count. */}
+      <Section
+        title={`${monthLabel(month)} · ${visible.length}건`}
+        action={
+          <ChipRow>
+            <Chip
+              label="필터"
+              icon="filter"
+              selected={activeFilters > 0}
+              count={activeFilters}
+              onPress={() => setShowFilters(true)}
+            />
+            <Chip
+              label={sortByDate ? "날짜순" : "입력순"}
+              icon="sort"
+              selected={sortByDate}
+              accessibilityLabel={`정렬, ${sortByDate ? "날짜 최신순" : "입력한 순서"}`}
+              onPress={() => setSortByDate(!sortByDate)}
+            />
+          </ChipRow>
+        }
+      >
         {visible.length ? (
           visible.map((item, index) => (
             <TransactionRow

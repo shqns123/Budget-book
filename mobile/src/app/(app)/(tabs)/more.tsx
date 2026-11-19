@@ -1,14 +1,20 @@
 import { router } from "expo-router";
 import { Row, Screen, Section, Text } from "@/components/ui";
+import { useInbox } from "@/store/inbox-store";
 import { useSession } from "@/store/session-store";
 import { confirm } from "@/lib/confirm";
 
 export default function MoreScreen() {
   const { serverUrl, signOut } = useSession();
+  const inbox = useInbox();
+  const inboxMeta = !inbox.supported
+    ? "Android 앱에서 카드 승인·출금 알림을 모아요"
+    : `${inbox.items.length}건 대기 · ${inbox.access ? "알림 접근 켜짐" : "알림 접근 꺼짐"}`;
   return (
     <Screen title="전체">
       <Section title="가계부">
-        <Row first icon="piggy" title="저축 내역" meta="저축 계획과 기록" chevron onPress={() => router.push("/savings")} />
+        <Row first icon="inbox" title="결제 알림 대기함" meta={inboxMeta} chevron onPress={() => router.push("/inbox")} />
+        <Row icon="piggy" title="저축 내역" meta="저축 계획과 기록" chevron onPress={() => router.push("/savings")} />
         <Row icon="settings" title="가계부 설정" meta="통장 · 분류 · 월 예산 · 반복 지출" chevron onPress={() => router.push("/settings")} />
         <Row icon="members" title="멤버" meta="가계부를 함께 쓰는 사람 · 초대" chevron onPress={() => router.push("/members")} />
       </Section>

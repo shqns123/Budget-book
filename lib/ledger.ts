@@ -71,6 +71,8 @@ export type Transaction = {
    * shows a mark instead, and editing or deleting the expense updates or removes it.
    */
   linkedTo?: string;
+  /** The 반복 항목 the native app registered this record from (일괄 등록 or a payment notice). */
+  recurringId?: string;
 };
 
 export function calculateAccountBalances(

@@ -46,6 +46,8 @@ const ios = {
   balance: "pie-chart-outline",
   members: "people-outline",
   mail: "mail-outline",
+  inbox: "file-tray-outline",
+  link: "link-outline",
 } as const;
 
 export type IconName = keyof typeof ios;
@@ -89,6 +91,8 @@ const android: Record<IconName, keyof typeof MaterialIcons.glyphMap> = {
   balance: "pie-chart-outline",
   members: "group",
   mail: "mail-outline",
+  inbox: "inbox",
+  link: "link",
 };
 
 export function Icon({
