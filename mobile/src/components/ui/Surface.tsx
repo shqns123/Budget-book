@@ -54,6 +54,21 @@ export function Section({
   );
 }
 
+/**
+ * A title inside a card, in the segmented control's type (subhead, bold): the report's cards.
+ * `action` sits at the right (a chip, say).
+ */
+export function CardTitle({ title, action }: { title: string; action?: ReactNode }) {
+  return (
+    <View style={styles.cardTitle}>
+      <Text variant="subhead" weight="700" accessibilityRole="header" numberOfLines={1} style={{ flexShrink: 1 }}>
+        {title}
+      </Text>
+      {action}
+    </View>
+  );
+}
+
 /** A list row: optional 36px icon tile, label + meta, trailing value. */
 export function Row({
   title,
@@ -67,6 +82,8 @@ export function Row({
   chevron,
   first,
   accessibilityLabel,
+  accessibilityActions,
+  onAccessibilityAction,
   destructive,
   dimmed,
   badge,
@@ -91,6 +108,8 @@ export function Row({
   chevron?: boolean;
   first?: boolean;
   accessibilityLabel?: string;
+  accessibilityActions?: import("react-native").PressableProps["accessibilityActions"];
+  onAccessibilityAction?: import("react-native").PressableProps["onAccessibilityAction"];
   destructive?: boolean;
   dimmed?: boolean;
 }) {
@@ -159,6 +178,8 @@ export function Row({
           onPress={onPress}
           accessibilityRole="button"
           accessibilityLabel={accessibilityLabel}
+          accessibilityActions={accessibilityActions}
+          onAccessibilityAction={onAccessibilityAction}
           style={({ pressed }) => pressed && { backgroundColor: c.subtle }}
         >
           {content}
@@ -176,6 +197,13 @@ export function Divider() {
 }
 
 const styles = StyleSheet.create({
+  cardTitle: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: space.sm,
+    minHeight: 24,
+  },
   sectionHead: {
     flexDirection: "row",
     alignItems: "center",

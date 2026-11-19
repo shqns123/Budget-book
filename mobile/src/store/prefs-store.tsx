@@ -19,7 +19,7 @@ type Prefs = {
   setMonth: (month: string) => void;
   selected: Record<Scope, string[]>;
   setSelected: (scope: Scope, ids: string[]) => void;
-  /** Persist a scope's selection (the 저장 button): `ids`, or the current one. */
+  /** Persist a scope's selection: `ids`, or the current one. */
   saveSelected: (scope: Scope, ids?: string[]) => void;
   sortByDate: boolean;
   setSortByDate: (value: boolean) => void;

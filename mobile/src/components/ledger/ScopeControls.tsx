@@ -8,7 +8,6 @@ import { space } from "@/theme/tokens";
 import {
   Chip,
   FoldMenu,
-  PrimaryButton,
   Text,
   useFoldAnchor,
   Wheel,
@@ -28,7 +27,7 @@ export const accountIcon: Record<AccountKind, IconName> = {
 
 /**
  * The month filter chip. Tapping it unfolds a year · month wheel out of the chip (FoldMenu); the
- * month changes when the panel closes (완료, or a tap outside).
+ * month changes when the panel closes.
  * `compact` (a header where the title already names the month) is just a calendar icon.
  */
 export function MonthChip({ compact }: { compact?: boolean }) {
@@ -95,17 +94,14 @@ function PeriodMenu({
       maxWidth={period === "month" ? 300 : 240}
       accessibilityLabel={period === "month" ? "조회 월 선택" : "조회 연도 선택"}
     >
-      <View style={{ gap: space.md }}>
-        {period === "month" ? (
-          <WheelRow>
-            <Wheel bare flex={1.3} items={years} value={year} onChange={setYear} accessibilityLabel="연도" />
-            <Wheel bare items={MONTH_ITEMS} value={monthNo} onChange={setMonthNo} accessibilityLabel="월" />
-          </WheelRow>
-        ) : (
-          <Wheel items={years} value={year} onChange={setYear} accessibilityLabel="연도" />
-        )}
-        <PrimaryButton label="완료" onPress={close} />
-      </View>
+      {period === "month" ? (
+        <WheelRow>
+          <Wheel bare flex={1.3} items={years} value={year} onChange={setYear} accessibilityLabel="연도" />
+          <Wheel bare items={MONTH_ITEMS} value={monthNo} onChange={setMonthNo} accessibilityLabel="월" />
+        </WheelRow>
+      ) : (
+        <Wheel items={years} value={year} onChange={setYear} accessibilityLabel="연도" />
+      )}
     </FoldMenu>
   );
 }
@@ -137,7 +133,7 @@ export function accountFilterLabel(selected: string[], names: (id: string) => st
   return `통장 ${selected.length}개 선택`;
 }
 
-const ACCOUNT_HINT = "선택한 통장의 거래만 합산해요. 저장하면 다음에도 유지돼요.";
+const ACCOUNT_HINT = "선택한 통장의 거래만 합산해요. 창을 닫으면 선택이 저장돼요.";
 const ALL = "";
 
 /** The account filter chip. Tapping it unfolds the account list out of the chip (FoldMenu). */
@@ -168,7 +164,7 @@ export function AccountChip({ scope }: { scope: Scope }) {
 /**
  * One account (or 전체 통장) on a wheel. Mounted fresh for each opening; the pick is written once,
  * when the panel closes: writing the app-wide selection while the wheel turns would make every
- * open tab recompute its totals. 저장 also keeps it for next time.
+ * open tab recompute its totals. Closing the panel also saves a changed selection.
  */
 function AccountMenu({
   scope,
@@ -193,9 +189,12 @@ function AccountMenu({
     { value: ALL, label: "전체 통장" },
     ...accounts.map((a) => ({ value: a.id, label: a.name })),
   ]);
-  const next = pick === ALL ? [] : [pick];
   const close = () => {
-    if (pick !== initial) setSelected(scope, next);
+    if (pick !== initial) {
+      const next = pick === ALL ? [] : [pick];
+      setSelected(scope, next);
+      saveSelected(scope, next);
+    }
     onClose();
   };
   return (
@@ -217,14 +216,6 @@ function AccountMenu({
           </Text>
         </View>
         <Wheel items={items} value={initial} onChange={setPick} accessibilityLabel="통장" />
-        <PrimaryButton
-          label="저장"
-          onPress={() => {
-            if (pick !== initial) setSelected(scope, next);
-            saveSelected(scope, next);
-            onClose();
-          }}
-        />
       </View>
     </FoldMenu>
   );

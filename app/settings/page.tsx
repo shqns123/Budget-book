@@ -9,6 +9,7 @@ import {
   CirclePlus,
   CreditCard,
   EyeOff,
+  GripVertical,
   Landmark,
   PiggyBank,
   WalletCards,
@@ -16,6 +17,7 @@ import {
 } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
 import { MembersPanel } from "@/components/members-panel";
+import { useAccountOrderDrag } from "@/components/use-account-order-drag";
 import { type MonthlyBudget } from "@/lib/budgets";
 import { readSharedState, saveSharedState } from "@/lib/shared-state";
 import {
@@ -25,6 +27,8 @@ import {
   inferCategoryTransactionType,
   majorLabel,
   moveAccount,
+  moveAccountTo,
+  moveCategoryType,
   parseNumberInput,
   type RecurringExpenseTemplate,
   type Transaction,
@@ -76,6 +80,7 @@ export default function SettingsPage() {
   const budgetsChangedBeforeLoad = useRef(false);
   const [accounts, setAccounts] = useState<AccountSetting[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [categoryMoveError, setCategoryMoveError] = useState("");
   const [startYear, setStartYear] = useState(initialSettings.startYear);
   const [fiscalMonth, setFiscalMonth] = useState(initialSettings.fiscalMonth);
   const [view, setView] = useState<
@@ -96,6 +101,9 @@ export default function SettingsPage() {
   });
   const [showAdd, setShowAdd] = useState(false);
   const [reordering, setReordering] = useState(false);
+  const orderDrag = useAccountOrderDrag((id, targetId) =>
+    setAccounts((rows) => moveAccountTo(rows, id, targetId)),
+  );
   const [draft, setDraft] = useState({
     name: "",
     kind: "bank" as Kind,
@@ -277,7 +285,7 @@ export default function SettingsPage() {
   function updateCategoryGroup(
     transactionType: Category["transactionType"],
     major: string,
-    updates: Partial<Pick<Category, "major" | "transactionType">>,
+    updates: Pick<Category, "major">,
   ) {
     setCategories((items) =>
       items.map((item) =>
@@ -286,6 +294,21 @@ export default function SettingsPage() {
           : item,
       ),
     );
+  }
+  function changeCategoryType(
+    type: Category["transactionType"],
+    major: string,
+    nextType: Category["transactionType"],
+    rowIndex?: number,
+  ) {
+    if (type === nextType) return;
+    const next = moveCategoryType(categories, type, major, nextType, rowIndex);
+    if (next === categories) {
+      setCategoryMoveError(`${nextType === "income" ? "수입" : "지출"}의 ${major}에 같은 이름의 소분류가 있어요.`);
+      return;
+    }
+    setCategoryMoveError("");
+    setCategories(next);
   }
   function addMinorCategory(
     transactionType: Category["transactionType"],
@@ -415,7 +438,10 @@ export default function SettingsPage() {
                 <h2>계좌와 시작 잔액</h2>
                 <div className="header-actions">
                   <button
-                    onClick={() => setReordering(!reordering)}
+                    onClick={() => {
+                      orderDrag.cancel();
+                      setReordering(!reordering);
+                    }}
                     className={reordering ? "chosen" : ""}
                     aria-pressed={reordering}
                   >
@@ -431,7 +457,7 @@ export default function SettingsPage() {
               </header>
               {reordering && (
                 <p className="setting-guide">
-                  바꾼 순서는 거래내역과 통장별 지출의 통장 목록에도 그대로 쓰여요.
+                  계좌를 길게 누른 뒤 원하는 위치로 끌어 놓으세요.
                 </p>
               )}
               {grouped.map(({ classification, rows }) => (
@@ -443,11 +469,23 @@ export default function SettingsPage() {
                       return (
                         <article
                           key={account.id}
-                          className={
-                            account.hidden
-                              ? "account-setting reordering is-hidden"
-                              : "account-setting reordering"
-                          }
+                          data-order-account={account.id}
+                          className={[
+                            "account-setting reordering",
+                            account.hidden && "is-hidden",
+                            orderDrag.preview?.id === account.id && "is-dragging",
+                            orderDrag.preview?.targetId === account.id &&
+                              orderDrag.preview.id !== account.id && "is-drop-target",
+                          ].filter(Boolean).join(" ")}
+                          style={orderDrag.preview?.id === account.id ? {
+                            transform: `translateY(${orderDrag.preview.offset}px)`,
+                          } : undefined}
+                          onPointerDown={(event) => orderDrag.start(event, account.id)}
+                          onPointerMove={orderDrag.move}
+                          onPointerUp={orderDrag.finish}
+                          onPointerCancel={orderDrag.finish}
+                          onLostPointerCapture={orderDrag.finish}
+                          onContextMenu={(event) => event.preventDefault()}
                         >
                           <span className="account-code">{account.code}</span>
                           <i>
@@ -460,6 +498,7 @@ export default function SettingsPage() {
                             </small>
                           </div>
                           <div className="move-buttons">
+                            <GripVertical size={16} aria-hidden="true" className="account-drag-grip" />
                             <button
                               disabled={index === 0}
                               aria-label={`${account.name} 위로`}
@@ -533,26 +572,19 @@ export default function SettingsPage() {
                   <CirclePlus size={16} /> 대분류 추가
                 </button>
               </header>
+              {categoryMoveError && <p className="setting-guide" role="alert">{categoryMoveError}</p>}
               <div className="category-group-list">
                 {categoryGroups.map((group) => (
                   <article
                     className="category-group"
-                    key={`${group.transactionType}-${group.major}`}
+                    key={group.rows[0].index}
                   >
                   <div className="category-group-head">
                     <select
                       value={group.transactionType}
                       aria-label={`${group.major} 거래 유형`}
                       onChange={(event) =>
-                        updateCategoryGroup(
-                          group.transactionType,
-                          group.major,
-                          {
-                            transactionType: event.target.value as
-                              | "income"
-                              | "expense",
-                          },
-                        )
+                        changeCategoryType(group.transactionType, group.major, event.target.value as Category["transactionType"])
                       }
                     >
                       <option value="expense">지출</option>
@@ -582,7 +614,7 @@ export default function SettingsPage() {
                     {group.rows.map(({ category, index }) => (
                       <div
                         className="category-minor-row"
-                        key={`${category.minor}-${index}`}
+                        key={index}
                       >
                         <input
                           value={category.minor}
@@ -597,6 +629,16 @@ export default function SettingsPage() {
                             )
                           }
                         />
+                        <select
+                          value={category.transactionType}
+                          aria-label={`${category.minor} 거래 유형`}
+                          onChange={(event) =>
+                            changeCategoryType(group.transactionType, group.major, event.target.value as Category["transactionType"], index)
+                          }
+                        >
+                          <option value="expense">지출</option>
+                          <option value="income">수입</option>
+                        </select>
                         <button
                           type="button"
                           onClick={() =>

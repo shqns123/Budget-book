@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { StyleSheet, View } from "react-native";
+import { AccountOrderRows } from "@/components/ledger/AccountOrderRows";
 import { accountIcon } from "@/components/ledger/ScopeControls";
 import {
   Banner,
@@ -25,6 +26,8 @@ import {
   formatNumber,
   majorLabel,
   moveAccount,
+  moveAccountTo,
+  moveCategoryType,
   newId,
   typeLabel,
   unmarkedRecurringExpenses,
@@ -55,6 +58,7 @@ export default function SettingsScreen() {
   const { data, save } = useLedger();
   const settings = data.settings;
   const [view, setView] = useState<View_>("accounts");
+  const [draggingAccount, setDraggingAccount] = useState(false);
 
   const update = (fn: (s: SharedSettings) => SharedSettings, typing?: boolean) =>
     void save("settings", fn, typing ? TYPING : undefined);
@@ -63,7 +67,7 @@ export default function SettingsScreen() {
   const years = Array.from(new Set([2024, 2025, 2026, thisYear, thisYear + 1, settings.startYear])).sort();
 
   return (
-    <Screen title="가계부 설정" back inTabs={false}>
+    <Screen title="가계부 설정" back inTabs={false} scrollEnabled={!draggingAccount}>
       <Section padded>
         <FieldRow>
           <SelectField
@@ -92,7 +96,7 @@ export default function SettingsScreen() {
         ]}
       />
       {view === "accounts" ? (
-        <AccountsView settings={settings} update={update} />
+        <AccountsView settings={settings} update={update} onDragChange={setDraggingAccount} />
       ) : view === "categories" ? (
         <CategoriesView settings={settings} update={update} />
       ) : view === "budgets" ? (
@@ -106,7 +110,15 @@ export default function SettingsScreen() {
 
 type UpdateFn = (fn: (s: SharedSettings) => SharedSettings, typing?: boolean) => void;
 
-function AccountsView({ settings, update }: { settings: SharedSettings; update: UpdateFn }) {
+function AccountsView({
+  settings,
+  update,
+  onDragChange,
+}: {
+  settings: SharedSettings;
+  update: UpdateFn;
+  onDragChange: (active: boolean) => void;
+}) {
   const [showAdd, setShowAdd] = useState(false);
   const blank = {
     name: "",
@@ -148,10 +160,10 @@ function AccountsView({ settings, update }: { settings: SharedSettings; update: 
       accounts: s.accounts.map((a) => (a.id === id ? { ...a, hidden: !a.hidden } : a)),
     }));
 
-  // 순서 변경: each row trades its balance for up / down buttons. The order is the stored list's,
-  // which the transactions tab and 통장별 지출 follow too.
   const [reordering, setReordering] = useState(false);
   const move = (id: string, step: -1 | 1) => update((s) => ({ ...s, accounts: moveAccount(s.accounts, id, step) }));
+  const drop = (id: string, targetId: string) =>
+    update((s) => ({ ...s, accounts: moveAccountTo(s.accounts, id, targetId) }));
 
   return (
     <>
@@ -182,7 +194,9 @@ function AccountsView({ settings, update }: { settings: SharedSettings; update: 
             meta={`${rows.length}개`}
             defaultOpen={reordering}
           >
-            {rows.map((account, index) => (
+            {reordering ? (
+              <AccountOrderRows rows={rows} onDragChange={onDragChange} onDrop={drop} onStep={move} />
+            ) : rows.map((account, index) => (
               <Row
                 key={account.id}
                 first={index === 0}
@@ -191,22 +205,6 @@ function AccountsView({ settings, update }: { settings: SharedSettings; update: 
                 meta={`${majorLabel(account.major)} · ${account.minor}${account.paymentDay ? ` · ${account.paymentDay}일 결제/상환` : ""}`}
                 dimmed={account.hidden}
                 trailing={
-                  reordering ? (
-                    <View style={styles.accountTrailing}>
-                      <IconButton
-                        icon="moveUp"
-                        label={`${account.name} 위로`}
-                        disabled={index === 0}
-                        onPress={() => move(account.id, -1)}
-                      />
-                      <IconButton
-                        icon="moveDown"
-                        label={`${account.name} 아래로`}
-                        disabled={index === rows.length - 1}
-                        onPress={() => move(account.id, 1)}
-                      />
-                    </View>
-                  ) : (
                   <View style={styles.accountTrailing}>
                     <Text variant="subhead" weight="600" tabular>
                       {formatNumber(account.balance)}원
@@ -219,7 +217,6 @@ function AccountsView({ settings, update }: { settings: SharedSettings; update: 
                       />
                     )}
                   </View>
-                  )
                 }
               />
             ))}
@@ -228,7 +225,7 @@ function AccountsView({ settings, update }: { settings: SharedSettings; update: 
       })}
       <Text variant="footnote" weight="400" color="text2">
         {reordering
-          ? "바꾼 순서는 거래내역과 통장별 지출의 통장 목록에도 그대로 쓰여요."
+          ? "계좌를 길게 누른 뒤 원하는 위치로 끌어 놓으세요."
           : "시작 잔액이 0원인 계좌만 숨길 수 있어요."}
       </Text>
       <Sheet
@@ -279,6 +276,7 @@ function AccountsView({ settings, update }: { settings: SharedSettings; update: 
 function CategoriesView({ settings, update }: { settings: SharedSettings; update: UpdateFn }) {
   const { c } = useTheme();
   const [type, setType] = useState<CategorySetting["transactionType"]>("expense");
+  const [moveError, setMoveError] = useState("");
   const allGroups = useMemo(() => {
     const map = new Map<string, { major: string; transactionType: CategorySetting["transactionType"]; rows: { category: CategorySetting; index: number }[] }>();
     settings.categories.forEach((category, index) => {
@@ -294,7 +292,7 @@ function CategoriesView({ settings, update }: { settings: SharedSettings; update
   const updateGroup = (
     type: CategorySetting["transactionType"],
     major: string,
-    patch: Partial<Pick<CategorySetting, "major" | "transactionType">>,
+    patch: Pick<CategorySetting, "major">,
     typing?: boolean,
   ) =>
     update(
@@ -309,6 +307,25 @@ function CategoriesView({ settings, update }: { settings: SharedSettings; update
 
   const updateRow = (index: number, patch: Partial<CategorySetting>, typing?: boolean) =>
     update((s) => ({ ...s, categories: s.categories.map((item, i) => (i === index ? { ...item, ...patch } : item)) }), typing);
+
+  const changeType = (
+    currentType: CategorySetting["transactionType"],
+    major: string,
+    nextType: CategorySetting["transactionType"],
+    rowIndex?: number,
+  ) => {
+    if (currentType === nextType) return;
+    if (moveCategoryType(settings.categories, currentType, major, nextType, rowIndex) === settings.categories) {
+      setMoveError(`${nextType === "income" ? "수입" : "지출"}의 ${major}에 같은 이름의 소분류가 있어요.`);
+      return;
+    }
+    update((s) => ({
+      ...s,
+      categories: moveCategoryType(s.categories, currentType, major, nextType, rowIndex),
+    }));
+    setMoveError("");
+    setType(nextType);
+  };
 
   // 대분류 추가: filled in on a sheet, created on 추가.
   const blankGroup = { transactionType: type, major: "", minor: "" };
@@ -344,7 +361,10 @@ function CategoriesView({ settings, update }: { settings: SharedSettings; update
     <>
       <Segmented
         value={type}
-        onChange={setType}
+        onChange={(nextType) => {
+          setMoveError("");
+          setType(nextType);
+        }}
         options={[
           { value: "expense", label: "지출" },
           { value: "income", label: "수입" },
@@ -352,6 +372,7 @@ function CategoriesView({ settings, update }: { settings: SharedSettings; update
         accessibilityLabel="분류 유형"
       />
       <SecondaryButton icon="plus" label="대분류 추가" onPress={() => setNewGroup(blankGroup)} />
+      {moveError ? <Banner message={moveError} /> : null}
       {groups.map((group) => (
         <FoldSection
           key={group.rows[0].index}
@@ -364,6 +385,15 @@ function CategoriesView({ settings, update }: { settings: SharedSettings; update
               label="대분류"
               value={group.major}
               onChangeText={(major) => updateGroup(group.transactionType, group.major, { major }, true)}
+            />
+            <SelectField
+              label="대분류 거래 유형"
+              value={group.transactionType}
+              options={[
+                { value: "expense", label: "지출" },
+                { value: "income", label: "수입" },
+              ]}
+              onChange={(nextType) => changeType(group.transactionType, group.major, nextType)}
             />
             <Text variant="footnote" color="text2">
               소분류
@@ -392,6 +422,10 @@ function CategoriesView({ settings, update }: { settings: SharedSettings; update
                     }}
                   />
                 </View>
+                <TextButton
+                  label={group.transactionType === "expense" ? "수입으로 이동" : "지출로 이동"}
+                  onPress={() => changeType(group.transactionType, group.major, group.transactionType === "expense" ? "income" : "expense", index)}
+                />
               </View>
             ))}
             <TextButton icon="plus" label="소분류 추가" onPress={() => addMinor(group.transactionType, group.major)} />

@@ -36,7 +36,7 @@ export function FoldSection({
   padded?: boolean;
   /** A card nested inside another (canvas grey instead of white). */
   inset?: boolean;
-  /** Title at 15px instead of 17px (dense lists). */
+  /** Title in subhead bold (15px, the segmented control's type) instead of headline 17px. */
   smallTitle?: boolean;
   children: ReactNode;
 }) {
@@ -74,9 +74,10 @@ export function FoldSection({
             <Icon name="chevronDown" size={20} color={c.text2} />
           </Animated.View>
           <Text
-            variant="headline"
+            variant={smallTitle ? "subhead" : "headline"}
+            weight={smallTitle ? "700" : undefined}
             numberOfLines={1}
-            style={[{ flexShrink: 1 }, smallTitle && { fontSize: 15, lineHeight: 20 }]}
+            style={{ flexShrink: 1 }}
           >
             {title}
           </Text>

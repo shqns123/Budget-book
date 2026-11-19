@@ -671,31 +671,30 @@ a {
 }
 .record-detail dt { color: var(--slate); }
 .record-detail dd { margin: 0; text-align: right; }
-.record-detail-actions {
+.deletion-confirm h2 {
+  margin-bottom: 10px;
+}
+.deletion-confirm p {
+  margin: 0 0 20px;
+  color: var(--slate);
+  line-height: 1.65;
+}
+.deletion-actions {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 8px;
-  margin-top: 25px;
 }
-.record-detail-actions button {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  padding: 12px;
+.deletion-actions button {
+  min-height: 44px;
   border: 0;
   border-radius: 999px;
-  background: var(--ink);
-  color: #fff;
-  font-size: 12px;
+  background: var(--mist);
+  color: var(--ink);
   font-weight: 700;
 }
-.record-detail-actions .delete-record {
-  width: auto;
-  margin: 0;
-  border: 1px solid #e6b7a4;
-  background: transparent;
-  color: #a85135;
+.deletion-actions button:last-child {
+  background: #c92a2a;
+  color: #fff;
 }
 .record-sheet {
   width: min(100%, 475px);
@@ -1295,7 +1294,8 @@ a {
 }
 .category-group-head input,
 .category-group-head select,
-.category-minor-row > input {
+.category-minor-row > input,
+.category-minor-row > select {
   width: 100%;
   padding: 9px;
   border: 1px solid #e1d8d2;
@@ -1321,7 +1321,7 @@ a {
 }
 .category-minor-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 40px;
+  grid-template-columns: minmax(0, 1fr) 76px 40px;
   gap: 9px;
   align-items: center;
   padding: 9px 0;
@@ -2290,6 +2290,58 @@ a {
   outline: 2px solid var(--ink);
   outline-offset: -2px;
 }
+.ledger-card-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 8px;
+}
+.ledger-swipe-row {
+  position: relative;
+  border: 1px solid #e7e5e4;
+  border-radius: 14px;
+  overflow: hidden;
+}
+.ledger-swipe-row .ledger-row {
+  position: relative;
+  z-index: 1;
+  background: #fff;
+  border-bottom: 0;
+  touch-action: pan-y;
+  user-select: none;
+  transition: transform 160ms ease-out;
+}
+.ledger-swipe-row .ledger-row.swiping {
+  transition: none;
+}
+.ledger-swipe-row .editable-row:hover {
+  background: var(--fog);
+}
+.ledger-swipe-action {
+  position: absolute;
+  inset-block: 0;
+  display: grid;
+  width: 50%;
+  align-items: center;
+  padding-inline: 22px;
+  pointer-events: none;
+}
+.ledger-swipe-action.edit {
+  left: 0;
+  justify-items: start;
+  background: var(--peach);
+  color: var(--sienna);
+}
+.ledger-swipe-action.delete {
+  right: 0;
+  justify-items: end;
+  background: #c92a2a;
+  color: #fff;
+}
+@media (prefers-reduced-motion: reduce) {
+  .ledger-swipe-row .ledger-row {
+    transition: none;
+  }
+}
 .budget-setting {
   display: grid;
   grid-template-columns: 1fr minmax(130px, 220px) 18px;
@@ -2558,21 +2610,6 @@ a {
   background: var(--fog);
   color: var(--ink);
   font-size: 12px;
-}
-.delete-record {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  width: 100%;
-  margin-top: 10px;
-  padding: 12px;
-  border: 1px solid #e6b7a4;
-  border-radius: 999px;
-  background: transparent;
-  color: #a85135;
-  font-size: 12px;
-  font-weight: 700;
 }
 .recurring-settings-form,
 .recurring-setting {
@@ -3499,10 +3536,9 @@ a {
   max-height: none;
   overflow: visible;
 }
-.wheel-row {
+.month-menu > .wheel-row {
   position: relative;
   display: flex;
-  gap: 8px;
 }
 .wheel-row .wheel:first-of-type {
   flex: 1.3;
@@ -3511,21 +3547,6 @@ a {
   position: relative;
   flex: 1;
   min-width: 0;
-}
-.picker-dropdown {
-  width: 100%;
-  min-height: 48px;
-  padding: 0 12px;
-  border: 1px solid #e8ebef;
-  border-radius: 12px;
-  background: #fff;
-  color: var(--ink);
-  font: inherit;
-  cursor: pointer;
-}
-.picker-dropdown:focus-visible {
-  outline: 2px solid var(--ink);
-  outline-offset: 2px;
 }
 .wheel-band {
   position: absolute;
@@ -3581,16 +3602,6 @@ a {
   line-height: 1.5;
   color: var(--slate);
 }
-.wheel-done {
-  border: 0;
-  border-radius: 999px;
-  padding: 11px;
-  background: var(--peach);
-  color: var(--sienna);
-  font-size: 13px;
-  font-weight: 700;
-}
-
 /* Report cards that fold (분류별 지출 · 이번 달 큰 지출): a <details> whose summary is the header. */
 .report-grid {
   align-items: start;
@@ -3657,7 +3668,8 @@ a {
   display: grid;
   grid-template-columns: 168px 1fr;
   gap: 28px;
-  align-items: center;
+  /* Top, so the donut stays put while a legend row opens below. */
+  align-items: start;
   margin-top: 20px;
 }
 .donut-chart {
@@ -3686,39 +3698,173 @@ a {
 }
 .donut-legend {
   display: grid;
+  gap: 2px;
   margin: 0;
   padding: 0;
   list-style: none;
 }
+/* A legend row opens into a card: the row takes the mist grey and the list eases down under it. */
 .donut-legend li {
+  border-radius: 12px;
+  transition: background-color 0.28s cubic-bezier(0.2, 0, 0, 1);
+}
+.donut-legend li.open {
+  background: var(--mist);
+}
+.donut-row {
   display: grid;
-  grid-template-columns: 10px minmax(0, 1fr) auto auto;
+  width: 100%;
+  grid-template-columns: 10px minmax(0, 1fr) auto auto 15px;
   gap: 9px;
   align-items: center;
-  padding: 9px 2px;
-  border-bottom: 1px solid #eee;
+  padding: 10px 8px;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: inherit;
   font-size: 12px;
+  text-align: left;
 }
-.donut-legend i {
+.donut-row:hover {
+  background: var(--fog);
+}
+.donut-legend li.open .donut-row:hover {
+  background: transparent;
+}
+.donut-row:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+.donut-row i {
   width: 10px;
   height: 10px;
   border-radius: 50%;
 }
-.donut-legend b {
+.donut-row b {
   overflow: hidden;
   font-weight: 500;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.donut-legend span {
+.donut-row span {
   color: var(--slate);
   font-variant-numeric: tabular-nums;
 }
-.donut-legend strong {
+.donut-row strong {
   min-width: 84px;
   font-weight: 600;
   text-align: right;
   font-variant-numeric: tabular-nums;
+}
+.donut-row-chevron {
+  color: var(--slate);
+  transform: rotate(-90deg);
+  transition: transform 0.24s cubic-bezier(0.2, 0, 0, 1);
+}
+.donut-legend li.open .donut-row-chevron {
+  transform: rotate(0deg);
+}
+.donut-fold {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transition:
+    grid-template-rows 0.28s cubic-bezier(0.2, 0, 0, 1),
+    opacity 0.22s ease;
+}
+.donut-legend li.open .donut-fold {
+  grid-template-rows: 1fr;
+  opacity: 1;
+}
+.donut-fold > div {
+  min-height: 0;
+  overflow: hidden;
+  margin: 0 8px;
+}
+.donut-legend li.open .donut-fold > div {
+  border-top: 1px solid #e2e2e5;
+  padding: 2px 0 6px;
+}
+.donut-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 8px 0;
+  font-size: 12px;
+}
+.donut-item div {
+  display: grid;
+  gap: 2px;
+}
+.donut-item b {
+  overflow: hidden;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.donut-item small {
+  color: var(--slate);
+  font-size: 10px;
+}
+.donut-item strong {
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+/* A slice's table, as on the app's charts: a small floating card beside the slice. */
+.donut-tip {
+  position: absolute;
+  z-index: 5;
+  width: 148px;
+  display: grid;
+  gap: 3px;
+  padding: 8px 12px;
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 6px 16px #17191c24;
+  pointer-events: none;
+  font-size: 12px;
+}
+.donut-tip b {
+  overflow: hidden;
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.donut-tip p {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+}
+.donut-tip i {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+}
+.donut-tip span {
+  flex: 1;
+  color: var(--slate);
+}
+.donut-tip strong {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.donut-chart svg {
+  cursor: pointer;
+  touch-action: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .donut-legend li,
+  .donut-row-chevron,
+  .donut-fold {
+    transition: none;
+  }
+}
+/* Report card titles in the 월간 / 연간 tabs' type: the page font, small and bold. */
+.report-surface h2 {
+  font: 700 15px/1.4 Arial, "Apple SD Gothic Neo", sans-serif;
+  letter-spacing: 0;
 }
 .donut-empty {
   margin: 16px 0 0;
@@ -3746,10 +3892,28 @@ a {
 }
 .account-setting .move-buttons {
   display: flex;
+  align-items: center;
   gap: 4px;
 }
 .account-setting.reordering {
   grid-template-columns: 75px 34px 1fr auto;
+  position: relative;
+  touch-action: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  cursor: grab;
+}
+.account-setting.reordering.is-dragging {
+  z-index: 1;
+  background: var(--peach);
+  box-shadow: 0 4px 14px #17191c24;
+  cursor: grabbing;
+}
+.account-setting.reordering.is-drop-target {
+  background: var(--mist);
+}
+.account-drag-grip {
+  color: var(--slate);
 }
 @media (max-width: 800px) {
   .account-setting.reordering {

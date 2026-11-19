@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { PanResponder, StyleSheet, View } from "react-native";
 import { AccountDonut } from "@/components/ledger/AccountDonut";
 import { PeriodChip } from "@/components/ledger/ScopeControls";
 import {
+  CardTitle,
   EmptyState,
   FoldSection,
   ProgressBar,
@@ -13,6 +14,7 @@ import {
   Sheet,
   Text,
 } from "@/components/ui";
+import { markChartTouch, onScreenTouch, useOutsideChartTouch } from "@/lib/chart-touch";
 import { monthLabel, shortDate, shortMonthLabel } from "@/lib/dates";
 import { inMonth, totals, withinSelected, won } from "@/lib/ledger";
 import { useLedger } from "@/store/ledger-store";
@@ -23,21 +25,6 @@ import type { ColorTokens } from "@/theme/tokens";
 
 /** Reports cover every account (no account filter on this screen). */
 const ALL_ACCOUNTS: string[] = [];
-
-/**
- * Touches on the reports screen, so the chart's month table closes on a touch anywhere outside the
- * chart section. The section marks its own touches first (touch events bubble from the innermost
- * view), and the screen then tells the listeners about any touch that was not marked.
- */
-const outsideChartListeners = new Set<() => void>();
-let touchInChart = false;
-const markChartTouch = () => {
-  touchInChart = true;
-};
-const onScreenTouch = () => {
-  if (touchInChart) touchInChart = false;
-  else outsideChartListeners.forEach((close) => close());
-};
 
 /** The first tab: the monthly / yearly report (it replaced the old overview). */
 export default function ReportsScreen() {
@@ -119,8 +106,9 @@ function MonthlyReport() {
         categoryOrder={report.byCategory.map(([name]) => name)}
       />
 
-      <Section title="고정비와 변동비" padded>
+      <Section padded>
         <View style={{ gap: space.lg }}>
+          <CardTitle title="고정비와 변동비" />
           <SplitLine label="고정비" amount={report.now.fixedExpense} pct={report.fixedRatio} />
           <SplitLine label="변동비" amount={report.now.variableExpense} pct={report.now.expense ? 100 - report.fixedRatio : 0} tone="expense" />
         </View>
@@ -272,17 +260,12 @@ function MonthBars({ rows, year }: { rows: ChartRow[]; year: string }) {
   const [width, setWidth] = useState(0);
   const [active, setActive] = useState<number | null>(null);
   const [tipHeight, setTipHeight] = useState(0);
-  const high = Math.max(1, ...rows.flatMap((r) => [r.income, r.expense]));
+  const [closeTip] = useState(() => () => setActive(null));
+  const high =Math.max(1, ...rows.flatMap((r) => [r.income, r.expense]));
   const colWidth = width / rows.length;
 
   // A touch anywhere outside the chart section closes the table.
-  useEffect(() => {
-    const close = () => setActive(null);
-    outsideChartListeners.add(close);
-    return () => {
-      outsideChartListeners.delete(close);
-    };
-  }, []);
+  useOutsideChartTouch(closeTip);
 
   const indexAt = (x: number) => Math.max(0, Math.min(rows.length - 1, Math.floor(x / (colWidth || 1))));
   // Touch and drag both pick the month under the finger; a plain tap on the month already open

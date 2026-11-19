@@ -3,7 +3,6 @@ import { StyleSheet, View } from "react-native";
 import {
   Chip,
   FoldMenu,
-  PrimaryButton,
   Text,
   useFoldAnchor,
   Wheel,
@@ -102,7 +101,6 @@ function SourceMenu({
           </Text>
         </View>
         <Wheel items={items} value={value} onChange={setPick} accessibilityLabel="출처" />
-        <PrimaryButton label="완료" onPress={close} />
       </View>
     </FoldMenu>
   );

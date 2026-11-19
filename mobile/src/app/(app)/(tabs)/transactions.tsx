@@ -1,4 +1,4 @@
-import { router } from "expo-router";
+import { router, useIsFocused } from "expo-router";
 import { useMemo, useState } from "react";
 import { StyleSheet, View } from "react-native";
 import { AccountChip, MonthChip, useScopeSelection } from "@/components/ledger/ScopeControls";
@@ -8,11 +8,11 @@ import {
   categoryText,
   TransactionRow,
 } from "@/components/ledger/TransactionRow";
+import { TransactionSwipeRow } from "@/components/ledger/TransactionSwipeRow";
 import {
   Chip,
   ChipRow,
   EmptyState,
-  PrimaryButton,
   Screen,
   Section,
   SecondaryButton,
@@ -35,6 +35,7 @@ import { confirm } from "@/lib/confirm";
 type TypeFilter = "all" | TransactionType;
 
 export default function TransactionsScreen() {
+  const focused = useIsFocused();
   const { c } = useTheme();
   const { data, accounts, save } = useLedger();
   const { month, sortByDate, setSortByDate } = usePrefs();
@@ -71,6 +72,10 @@ export default function TransactionsScreen() {
   ];
 
   const detailLinked = detail ? linkedTransfer(data.transactions, detail.id) : undefined;
+
+  const edit = (record: Transaction) => {
+    openCompose({ id: record.id, from: "center" });
+  };
 
   const remove = async (record: Transaction) => {
     const ok = await confirm({
@@ -135,16 +140,32 @@ export default function TransactionsScreen() {
         }
       >
         {visible.length ? (
-          visible.map((item, index) => (
-            <TransactionRow
-              key={item.id}
-              item={item}
-              accounts={accounts}
-              first={index === 0}
-              linked={linkedTransfer(data.transactions, item.id)}
-              onPress={() => setDetail(item)}
-            />
-          ))
+          <View style={[styles.rows, { backgroundColor: c.bg }]}>
+            {visible.map((item) => (
+              <TransactionSwipeRow
+                key={item.id}
+                focused={focused}
+                onEdit={() => edit(item)}
+                onDelete={() => void remove(item)}
+              >
+                <TransactionRow
+                  item={item}
+                  accounts={accounts}
+                  first
+                  linked={linkedTransfer(data.transactions, item.id)}
+                  onPress={() => setDetail(item)}
+                  accessibilityActions={[
+                    { name: "edit", label: "수정" },
+                    { name: "delete", label: "삭제" },
+                  ]}
+                  onAccessibilityAction={({ nativeEvent }) => {
+                    if (nativeEvent.actionName === "edit") edit(item);
+                    if (nativeEvent.actionName === "delete") void remove(item);
+                  }}
+                />
+              </TransactionSwipeRow>
+            ))}
+          </View>
         ) : (
           <EmptyState
             title="거래가 없어요"
@@ -158,18 +179,14 @@ export default function TransactionsScreen() {
         onClose={() => setShowFilters(false)}
         title="필터"
         footer={
-          <View style={{ flexDirection: "row", gap: space.sm }}>
-            <SecondaryButton
-              style={{ flex: 1 }}
-              label="초기화"
-              onPress={() => {
-                setTypeFilter("all");
-                setFromFilter("");
-                setToFilter("");
-              }}
-            />
-            <PrimaryButton style={{ flex: 1 }} label="적용" onPress={() => setShowFilters(false)} />
-          </View>
+          <SecondaryButton
+            label="초기화"
+            onPress={() => {
+              setTypeFilter("all");
+              setFromFilter("");
+              setToFilter("");
+            }}
+          />
         }
       >
         <SelectField<TypeFilter>
@@ -189,32 +206,17 @@ export default function TransactionsScreen() {
 
       <Sheet visible={Boolean(detail)} onClose={() => setDetail(null)} title={detail?.name} subtitle="거래 상세">
         {detail && (
-          <>
-            <View style={[styles.detail, { backgroundColor: c.card }]}>
-              <DetailLine label="날짜" value={spokenDate(detail.date)} />
-              <DetailLine label="유형" value={typeLabel(detail.type)} />
-              <DetailLine label="분류" value={categoryText(detail)} />
-              <DetailLine label="통장" value={accountText(accounts, detail)} />
-              <DetailLine label="금액" value={amountText(detail)} strong />
-              {detail.memo ? <DetailLine label="메모" value={detail.memo} /> : null}
-              {detailLinked ? (
-                <DetailLine label="자금 이동" value={accountText(accounts, detailLinked)} />
-              ) : null}
-            </View>
-            <View style={{ flexDirection: "row", gap: space.sm }}>
-              <SecondaryButton
-                style={{ flex: 1 }}
-                icon="edit"
-                label="수정"
-                onPress={() => {
-                  const id = detail.id;
-                  setDetail(null);
-                  openCompose({ id, from: "center" });
-                }}
-              />
-              <SecondaryButton style={{ flex: 1 }} icon="trash" tone="danger" label="삭제" onPress={() => remove(detail)} />
-            </View>
-          </>
+          <View style={[styles.detail, { backgroundColor: c.card }]}>
+            <DetailLine label="날짜" value={spokenDate(detail.date)} />
+            <DetailLine label="유형" value={typeLabel(detail.type)} />
+            <DetailLine label="분류" value={categoryText(detail)} />
+            <DetailLine label="통장" value={accountText(accounts, detail)} />
+            <DetailLine label="금액" value={amountText(detail)} strong />
+            {detail.memo ? <DetailLine label="메모" value={detail.memo} /> : null}
+            {detailLinked ? (
+              <DetailLine label="자금 이동" value={accountText(accounts, detailLinked)} />
+            ) : null}
+          </View>
         )}
       </Sheet>
       {!data.transactions.length && !accounts.length ? (
@@ -238,6 +240,7 @@ function DetailLine({ label, value, strong }: { label: string; value: string; st
 }
 
 const styles = StyleSheet.create({
+  rows: { gap: space.sm },
   detail: { borderRadius: radius.card, paddingHorizontal: space.rowX, paddingVertical: space.sm },
   detailLine: { flexDirection: "row", alignItems: "center", minHeight: 44, gap: space.md },
 });

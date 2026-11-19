@@ -127,9 +127,6 @@ function useInitialForm(params: Params) {
   const [initial] = useState(() => {
     const editing = params.id ? data.transactions.find((t) => t.id === params.id) : undefined;
     if (editing) {
-      const opts = categoryOptions(categories, editing.type === "income" ? "income" : "expense");
-      const category =
-        editing.type === "transfer" ? "" : opts[editing.category] ? editing.category : (Object.keys(opts)[0] ?? "");
       return {
         editing,
         type: editing.type,
@@ -138,8 +135,8 @@ function useInitialForm(params: Params) {
         date: editing.date.replaceAll(".", "-"),
         accountId: editing.accountId,
         toAccountId: editing.toAccountId ?? accounts.find((a) => a.id !== editing.accountId)?.id ?? "",
-        category,
-        minorCategory: editing.minorCategory ?? opts[category]?.[0] ?? "",
+        category: editing.type === "transfer" ? "" : editing.category,
+        minorCategory: editing.minorCategory ?? "",
       };
     }
     const requested = accounts.find((a) => a.id === params.account)?.id;
@@ -207,10 +204,15 @@ function ComposeForm({ params, popup }: { params: Params; popup: PopupFrame }) {
   const [analyzing, setAnalyzing] = useState(false);
   const [imageError, setImageError] = useState("");
 
-  const options = useMemo(
-    () => categoryOptions(categories, type === "income" ? "income" : "expense"),
-    [categories, type],
-  );
+  const options = useMemo(() => {
+    const available = categoryOptions(categories, type === "income" ? "income" : "expense");
+    if (editing?.type === type && type !== "transfer" && editing.category) {
+      const minors = available[editing.category] ?? [];
+      const previousMinor = editing.minorCategory ?? "";
+      if (!minors.includes(previousMinor)) available[editing.category] = [...minors, previousMinor];
+    }
+    return available;
+  }, [categories, editing, type]);
   const accountOptions = accounts.map((a) => ({ value: a.id, label: a.name }));
 
   const changeType = (next: TransactionType) => {
@@ -673,7 +675,7 @@ function ComposeForm({ params, popup }: { params: Params; popup: PopupFrame }) {
                   <SelectField
                     label="소분류"
                     value={minorCategory}
-                    options={(options[category] ?? []).map((k) => ({ value: k, label: k }))}
+                    options={(options[category] ?? []).map((k) => ({ value: k, label: k || "미분류" }))}
                     onChange={(minor) => pickCategory(category, minor)}
                   />
                   {type === "income" ? (

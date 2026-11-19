@@ -183,6 +183,18 @@ export function moveAccount<T extends { id: string; classification: string }>(
   id: string,
   step: -1 | 1,
 ): T[] {
+  const account = accounts.find((row) => row.id === id);
+  if (!account) return accounts;
+  const group = accounts.filter((row) => row.classification === account.classification);
+  const target = group[group.findIndex((row) => row.id === id) + step];
+  return target ? moveAccountTo(accounts, id, target.id) : accounts;
+}
+
+export function moveAccountTo<T extends { id: string; classification: string }>(
+  accounts: T[],
+  id: string,
+  targetId: string,
+): T[] {
   const groups = ACCOUNT_GROUPS.map((group) =>
     accounts.filter((account) => account.classification === group),
   );
@@ -192,10 +204,38 @@ export function moveAccount<T extends { id: string; classification: string }>(
   const group = groups.find((rows) => rows.some((account) => account.id === id));
   if (!group) return accounts;
   const from = group.findIndex((account) => account.id === id);
-  const to = from + step;
-  if (to < 0 || to >= group.length) return accounts;
-  [group[from], group[to]] = [group[to], group[from]];
+  const to = group.findIndex((account) => account.id === targetId);
+  if (to < 0 || to === from) return accounts;
+  const [account] = group.splice(from, 1);
+  group.splice(to, 0, account);
   return [...groups.flat(), ...rest];
+}
+
+/** Move a group or one of its rows to the other type, without creating duplicate minors. */
+export function moveCategoryType<T extends {
+  major: string;
+  minor: string;
+  transactionType: "income" | "expense";
+}>(
+  categories: T[],
+  type: T["transactionType"],
+  major: string,
+  nextType: T["transactionType"],
+  rowIndex?: number,
+): T[] {
+  if (type === nextType) return categories;
+  const matches = (row: T, index: number) =>
+    row.transactionType === type && row.major === major && (rowIndex === undefined || rowIndex === index);
+  const moving = categories.filter(matches);
+  const destination = new Set(
+    categories
+      .filter((row) => row.transactionType === nextType && row.major === major)
+      .map((row) => row.minor?.trim()),
+  );
+  if (!moving.length || moving.some((row) => destination.has(row.minor?.trim()))) return categories;
+  return categories.map((row, index) =>
+    matches(row, index) ? { ...row, transactionType: nextType } : row,
+  );
 }
 
 export function hydrateLedgerSettings(value: unknown) {

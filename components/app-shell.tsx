@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import {
   BarChart3,
   ChevronDown,
@@ -25,7 +25,6 @@ type Scope = {
   activeLabel: string;
   month: string;
   updateSelected: (next: string[]) => void;
-  saveSelected: () => void;
   setMonth: (next: string) => void;
 };
 
@@ -52,7 +51,15 @@ const MONTH_ITEMS: WheelItem<number>[] = Array.from({ length: 12 }, (_, i) => ({
 }));
 
 /** Year · month wheels. The year list is fixed when the menu opens, so the wheel never shifts. */
-function MonthWheels({ month, onPick }: { month: string; onPick: (next: string) => void }) {
+function MonthWheels({
+  month,
+  onYear,
+  onMonth,
+}: {
+  month: string;
+  onYear: (year: number) => void;
+  onMonth: (month: number) => void;
+}) {
   const [years] = useState(() => yearItems(Number(month.slice(0, 4))));
   return (
     <WheelRow>
@@ -61,14 +68,14 @@ function MonthWheels({ month, onPick }: { month: string; onPick: (next: string) 
         label="연도"
         items={years}
         value={Number(month.slice(0, 4))}
-        onChange={(year) => onPick(`${year}-${month.slice(5)}`)}
+        onChange={onYear}
       />
       <Wheel
         bare
         label="월"
         items={MONTH_ITEMS}
         value={Number(month.slice(5))}
-        onChange={(m) => onPick(`${month.slice(0, 4)}-${String(m).padStart(2, "0")}`)}
+        onChange={onMonth}
       />
     </WheelRow>
   );
@@ -87,6 +94,28 @@ export function AppShell({
   const [month, setMonth] = useState("2026-08");
   const [settingsReady, setSettingsReady] = useState(false);
   const controlsRef = useRef<HTMLDivElement>(null);
+  const pendingMonth = useRef<string | null>(null);
+  const pendingAccounts = useRef<string[] | null>(null);
+  const pickMonth = useCallback((next: string) => {
+    setMonth(next);
+    window.localStorage.setItem("ledger-month", next);
+  }, []);
+  const closePickers = useCallback(() => {
+    if (pendingMonth.current !== null) {
+      pickMonth(pendingMonth.current);
+      pendingMonth.current = null;
+    }
+    if (pendingAccounts.current !== null) {
+      setSelected(pendingAccounts.current);
+      window.localStorage.setItem(
+        `ledger-selected-accounts:${pathname}`,
+        JSON.stringify(pendingAccounts.current),
+      );
+      pendingAccounts.current = null;
+    }
+    setShowMonths(false);
+    setShowAccounts(false);
+  }, [pathname, pickMonth]);
   useEffect(() => {
     const savedMonth = window.localStorage.getItem("ledger-month");
     if (savedMonth) setMonth(savedMonth);
@@ -125,15 +154,19 @@ export function AppShell({
     }
   }, [pathname, settingsReady]);
   useEffect(() => {
-    const closeMenus = (event: MouseEvent) => {
-      if (!controlsRef.current?.contains(event.target as Node)) {
-        setShowMonths(false);
-        setShowAccounts(false);
-      }
+    const closeOutside = (event: PointerEvent) => {
+      if (!controlsRef.current?.contains(event.target as Node)) closePickers();
     };
-    document.addEventListener("mousedown", closeMenus);
-    return () => document.removeEventListener("mousedown", closeMenus);
-  }, []);
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") closePickers();
+    };
+    document.addEventListener("pointerdown", closeOutside);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("pointerdown", closeOutside);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [closePickers]);
   const activeLabel = selected.length
     ? selected
         .map((id) => accounts.find((item) => item.id === id)?.name)
@@ -153,21 +186,10 @@ export function AppShell({
   const updateSelected = (next: string[]) => {
     setSelected(next);
   };
-  const saveSelected = () => {
-    window.localStorage.setItem(
-      `ledger-selected-accounts:${pathname}`,
-      JSON.stringify(selected),
-    );
-  };
   const monthLabel = `${month.slice(0, 4)}년 ${Number(month.slice(5))}월`;
-  /** Picks a month and keeps the menu open (the wheels turn it as they come to rest). */
-  const pickMonth = (next: string) => {
-    setMonth(next);
-    window.localStorage.setItem("ledger-month", next);
-  };
   const changeMonth = (next: string) => {
+    closePickers();
     pickMonth(next);
-    setShowMonths(false);
   };
   const logout = async () => {
     await fetch("/api/auth/logout", { method: "POST" });
@@ -226,19 +248,26 @@ export function AppShell({
               <div className="month-picker">
                 <button
                   className="month-control"
+                  aria-expanded={showMonths}
                   onClick={() => {
+                    closePickers();
                     setShowMonths(!showMonths);
-                    setShowAccounts(false);
                   }}
                 >
                   {monthLabel} <ChevronDown size={15} />
                 </button>
                 {showMonths && (
                   <div className="month-menu wheel-menu">
-                    <MonthWheels month={month} onPick={pickMonth} />
-                    <button className="wheel-done" onClick={() => setShowMonths(false)}>
-                      완료
-                    </button>
+                    <MonthWheels
+                      month={month}
+                      onYear={(year) => {
+                        pendingMonth.current = `${year}-${(pendingMonth.current ?? month).slice(5)}`;
+                      }}
+                      onMonth={(monthNo) => {
+                        const year = (pendingMonth.current ?? month).slice(0, 4);
+                        pendingMonth.current = `${year}-${String(monthNo).padStart(2, "0")}`;
+                      }}
+                    />
                   </div>
                 )}
               </div>
@@ -246,9 +275,10 @@ export function AppShell({
                 <div className="account-filter">
                   <button
                     className="account-control"
+                    aria-expanded={showAccounts}
                     onClick={() => {
+                      closePickers();
                       setShowAccounts(!showAccounts);
-                      setShowMonths(false);
                     }}
                   >
                     <span>{filterLabel}</span>
@@ -257,7 +287,7 @@ export function AppShell({
                   {showAccounts && (
                     <div className="account-menu wheel-menu">
                       <p className="wheel-hint">
-                        선택한 통장의 거래만 합산해요. 저장하면 다음에도 유지돼요.
+                        선택한 통장의 거래만 합산해요. 창을 닫으면 선택이 저장돼요.
                       </p>
                       <Wheel
                         label="통장"
@@ -266,17 +296,10 @@ export function AppShell({
                           ...accounts.map((account) => ({ value: account.id, label: account.name })),
                         ]}
                         value={selected.length === 1 ? selected[0] : ""}
-                        onChange={(id) => updateSelected(id ? [id] : [])}
-                      />
-                      <button
-                        className="wheel-done"
-                        onClick={() => {
-                          saveSelected();
-                          setShowAccounts(false);
+                        onChange={(id) => {
+                          pendingAccounts.current = id ? [id] : [];
                         }}
-                      >
-                        저장
-                      </button>
+                      />
                     </div>
                   )}
                 </div>
@@ -290,7 +313,6 @@ export function AppShell({
             activeLabel,
             month,
             updateSelected,
-            saveSelected,
             setMonth: changeMonth,
           })}
         </div>

@@ -1,6 +1,7 @@
 import { shortDate } from "@/lib/dates";
 import { accountName, typeLabel, won, type Account, type Transaction } from "@/lib/ledger";
 import { Row, Tag } from "@/components/ui";
+import type { PressableProps } from "react-native";
 
 export function amountText(item: Transaction) {
   const sign = item.type === "income" ? "+" : item.type === "transfer" ? "↔ " : "−";
@@ -22,12 +23,16 @@ export function TransactionRow({
   accounts,
   first,
   onPress,
+  accessibilityActions,
+  onAccessibilityAction,
   linked,
 }: {
   item: Transaction;
   accounts: Account[];
   first?: boolean;
   onPress?: () => void;
+  accessibilityActions?: PressableProps["accessibilityActions"];
+  onAccessibilityAction?: PressableProps["onAccessibilityAction"];
   /** The transfer recorded together with this expense ("자금 이동 같이 기록"). */
   linked?: Transaction;
 }) {
@@ -37,6 +42,8 @@ export function TransactionRow({
       dense
       first={first}
       onPress={onPress}
+      accessibilityActions={accessibilityActions}
+      onAccessibilityAction={onAccessibilityAction}
       icon={item.type === "transfer" ? "transfer" : item.type === "income" ? "income" : "expense"}
       iconTone={item.type === "transfer" ? "neutral" : item.type === "income" ? "income" : "expense"}
       title={item.name}

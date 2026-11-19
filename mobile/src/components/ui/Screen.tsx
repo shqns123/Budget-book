@@ -21,6 +21,7 @@ export function Screen({
   children,
   inTabs = true,
   refreshable = true,
+  scrollEnabled = true,
   back,
 }: {
   title?: string;
@@ -30,6 +31,7 @@ export function Screen({
   children: ReactNode;
   inTabs?: boolean;
   refreshable?: boolean;
+  scrollEnabled?: boolean;
   /** Pushed screens get a back button before the title. */
   back?: boolean;
 }) {
@@ -45,6 +47,7 @@ export function Screen({
         </View>
       )}
       <ScrollView
+        scrollEnabled={scrollEnabled}
         keyboardShouldPersistTaps="handled"
         contentContainerStyle={[
           styles.body,

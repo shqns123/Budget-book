@@ -12,11 +12,11 @@ import {
   LoaderCircle,
   ListFilter,
   Search,
-  Pencil,
   Trash2,
   X,
 } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
+import { TransactionSwipeRow } from "@/components/transaction-swipe-row";
 import {
   accounts,
   categories,
@@ -73,6 +73,7 @@ function TransactionsContent() {
   const [records, setRecords] = useState(initialTransactions);
   const [composer, setComposer] = useState(false);
   const [detailRecord, setDetailRecord] = useState<Transaction | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<Transaction | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [type, setType] = useState<Transaction["type"]>("expense");
   const [name, setName] = useState("");
@@ -102,15 +103,37 @@ function TransactionsContent() {
   >([]);
   const [, setSettingsVersion] = useState(0);
   const recordsChangedBeforeLoad = useRef(false);
-  const lastTouchRef = useRef<{ id: string; at: number } | null>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const filterRef = useRef<HTMLDivElement>(null);
+  const detailCloseRef = useRef<HTMLButtonElement>(null);
+  const deleteCancelRef = useRef<HTMLButtonElement>(null);
   const [saveError, setSaveError] = useState("");
   const [formError, setFormError] = useState("");
   const isRepayment = type === "transfer" && isDebt(toAccountId);
   const currentCategoryOptions = makeCategoryOptions(
     type === "income" ? "income" : "expense",
   );
+  const editingRecord = editingId ? records.find((record) => record.id === editingId) : undefined;
+  if (editingRecord?.type === type && type !== "transfer" && editingRecord.category) {
+    const minors = currentCategoryOptions[editingRecord.category] ?? [];
+    const previousMinor = editingRecord.minorCategory ?? "";
+    if (!minors.includes(previousMinor)) currentCategoryOptions[editingRecord.category] = [...minors, previousMinor];
+  }
+  useEffect(() => {
+    if (!detailRecord && !pendingDelete) return;
+    const previousFocus = document.activeElement;
+    (pendingDelete ? deleteCancelRef : detailCloseRef).current?.focus();
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      if (pendingDelete) setPendingDelete(null);
+      else setDetailRecord(null);
+    };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => {
+      window.removeEventListener("keydown", closeOnEscape);
+      if (previousFocus instanceof HTMLElement) previousFocus.focus();
+    };
+  }, [detailRecord, pendingDelete]);
   useEffect(() => {
     if (searchParams.get("add") === "true") {
       setEditingId(null);
@@ -391,17 +414,6 @@ function TransactionsContent() {
     }
   }
   function openEditor(record: Transaction) {
-    const options =
-      record.type === "income"
-        ? makeCategoryOptions("income")
-        : makeCategoryOptions("expense");
-    const fallbackCategory = Object.keys(options)[0] ?? "";
-    const nextCategory =
-      record.type === "transfer"
-        ? "이동"
-        : options[record.category]
-          ? record.category
-          : fallbackCategory;
     setEditingId(record.id);
     setType(record.type);
     setName(record.name);
@@ -409,11 +421,8 @@ function TransactionsContent() {
     setDate(record.date.replaceAll(".", "-"));
     setAccountId(record.accountId);
     setToAccountId(record.toAccountId ?? "shinhan");
-    setCategory(nextCategory);
-    setMinorCategory(
-      record.minorCategory ??
-        (record.type === "transfer" ? "" : options[nextCategory]?.[0] ?? ""),
-    );
+    setCategory(record.type === "transfer" ? "이동" : record.category);
+    setMinorCategory(record.type === "transfer" ? "" : record.minorCategory ?? "");
     setComposer(true);
   }
   function openDetails(record: Transaction) {
@@ -637,108 +646,100 @@ function TransactionsContent() {
                 <span>통장 / 이동</span>
                 <span>금액</span>
               </div>
-              {sortedVisible.map((item) => (
-                <article
-                  className="ledger-row editable-row"
-                  key={item.id}
-                  onDoubleClick={() => openDetails(item)}
-                  onTouchEnd={() => {
-                    const now = Date.now();
-                    const previous = lastTouchRef.current;
-                    if (previous?.id === item.id && now - previous.at < 380) {
-                      lastTouchRef.current = null;
-                      openDetails(item);
-                      return;
-                    }
-                    lastTouchRef.current = { id: item.id, at: now };
-                  }}
-                  role="button"
-                  tabIndex={0}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter" || event.key === " ")
-                      openDetails(item);
-                  }}
-                >
-                  <time>{item.date}</time>
-                  <div className="ledger-name">
-                    <i>
-                      {item.type === "transfer" ? (
-                        <ArrowLeftRight size={15} />
-                      ) : item.amount > 0 ? (
-                        <ArrowUpRight size={16} />
-                      ) : (
-                        <ArrowDownRight size={16} />
-                      )}
-                    </i>
-                    <span>
-                      <small className="ledger-date">{item.date}</small>
-                      <b>{item.name}</b>
-                      <small className="ledger-mobile-meta">
-                        {item.type === "transfer"
-                          ? "이동"
-                          : item.minorCategory
-                            ? `${item.category} · ${item.minorCategory}`
-                            : item.category}
-                        {" / "}
-                        {
-                          accounts.find(
-                            (account) => account.id === item.accountId,
-                          )?.name
-                        }
-                        {item.toAccountId &&
-                          ` → ${accounts.find((account) => account.id === item.toAccountId)?.name}`}
-                      </small>
-                      {item.memo && <small>{item.memo}</small>}
-                      {records.some((linked) => linked.linkedTo === item.id) && (
-                        <small className="linked-mark">자금 이동 함께 기록됨</small>
+              <div className="ledger-card-list">
+                {sortedVisible.map((item) => (
+                  <TransactionSwipeRow
+                    key={item.id}
+                    onDetails={() => openDetails(item)}
+                    onEdit={() => openEditor(item)}
+                    onDelete={() => setPendingDelete(item)}
+                  >
+                    <time>{item.date}</time>
+                    <div className="ledger-name">
+                      <i>
+                        {item.type === "transfer" ? (
+                          <ArrowLeftRight size={15} />
+                        ) : item.amount > 0 ? (
+                          <ArrowUpRight size={16} />
+                        ) : (
+                          <ArrowDownRight size={16} />
+                        )}
+                      </i>
+                      <span>
+                        <small className="ledger-date">{item.date}</small>
+                        <b>{item.name}</b>
+                        <small className="ledger-mobile-meta">
+                          {item.type === "transfer"
+                            ? "이동"
+                            : item.minorCategory
+                              ? `${item.category} · ${item.minorCategory}`
+                              : item.category}
+                          {" / "}
+                          {
+                            accounts.find(
+                              (account) => account.id === item.accountId,
+                            )?.name
+                          }
+                          {item.toAccountId &&
+                            ` → ${accounts.find((account) => account.id === item.toAccountId)?.name}`}
+                        </small>
+                        {item.memo && <small>{item.memo}</small>}
+                        {records.some((linked) => linked.linkedTo === item.id) && (
+                          <small className="linked-mark">자금 이동 함께 기록됨</small>
+                        )}
+                      </span>
+                    </div>
+                    <span className="pill">
+                      {item.type === "transfer"
+                        ? "이동"
+                        : item.minorCategory
+                          ? `${item.category} · ${item.minorCategory}`
+                          : item.category}
+                    </span>
+                    <span className="account-cell">
+                      {
+                        accounts.find((account) => account.id === item.accountId)
+                          ?.name
+                      }
+                      {item.toAccountId && (
+                        <>
+                          {" "}
+                          →{" "}
+                          {
+                            accounts.find(
+                              (account) => account.id === item.toAccountId,
+                            )?.name
+                          }
+                        </>
                       )}
                     </span>
-                  </div>
-                  <span className="pill">
-                    {item.type === "transfer"
-                      ? "이동"
-                      : item.minorCategory
-                        ? `${item.category} · ${item.minorCategory}`
-                        : item.category}
-                  </span>
-                  <span className="account-cell">
-                    {
-                      accounts.find((account) => account.id === item.accountId)
-                        ?.name
-                    }
-                    {item.toAccountId && (
-                      <>
-                        {" "}
-                        →{" "}
-                        {
-                          accounts.find(
-                            (account) => account.id === item.toAccountId,
-                          )?.name
-                        }
-                      </>
-                    )}
-                  </span>
-                  <strong
-                    className={
-                      item.type === "income"
-                        ? "up"
+                    <strong
+                      className={
+                        item.type === "income"
+                          ? "up"
+                          : item.type === "transfer"
+                            ? "transfer-amount"
+                            : ""
+                      }
+                    >
+                      {item.type === "income"
+                        ? "+"
                         : item.type === "transfer"
-                          ? "transfer-amount"
-                          : ""
-                    }
-                  >
-                    {item.type === "income"
-                      ? "+"
-                      : item.type === "transfer"
-                        ? "↔"
-                        : "-"}
-                    {won(item.amount)}
-                  </strong>
-                </article>
-              ))}
+                          ? "↔"
+                          : "-"}
+                      {won(item.amount)}
+                    </strong>
+                  </TransactionSwipeRow>
+                ))}
+              </div>
             </section>
             {detailRecord && (
-              <div className="sheet-backdrop detail-backdrop">
+              <div
+                className="sheet-backdrop detail-backdrop"
+                onClick={(event) => {
+                  if (event.target === event.currentTarget) setDetailRecord(null);
+                }}
+              >
                 <section
                   className="record-detail"
                   role="dialog"
@@ -748,6 +749,7 @@ function TransactionsContent() {
                   <button
                     type="button"
                     className="sheet-close"
+                    ref={detailCloseRef}
                     onClick={() => setDetailRecord(null)}
                     aria-label="상세 닫기"
                   >
@@ -762,22 +764,39 @@ function TransactionsContent() {
                     <div><dt>통장</dt><dd>{accounts.find((account) => account.id === detailRecord.accountId)?.name}{detailRecord.toAccountId && ` → ${accounts.find((account) => account.id === detailRecord.toAccountId)?.name}`}</dd></div>
                     <div><dt>금액</dt><dd>{won(detailRecord.amount)}</dd></div>
                   </dl>
-                  <div className="record-detail-actions">
+                </section>
+              </div>
+            )}
+            {pendingDelete && (
+              <div
+                className="sheet-backdrop detail-backdrop"
+                onClick={(event) => {
+                  if (event.target === event.currentTarget) setPendingDelete(null);
+                }}
+              >
+                <section
+                  className="record-detail deletion-confirm"
+                  role="alertdialog"
+                  aria-modal="true"
+                  aria-labelledby="delete-transaction-title"
+                  aria-describedby="delete-transaction-message"
+                >
+                  <h2 id="delete-transaction-title">거래를 삭제할까요?</h2>
+                  <p id="delete-transaction-message">
+                    {pendingDelete.name} · {won(pendingDelete.amount)}<br />
+                    삭제하면 되돌릴 수 없어요.
+                  </p>
+                  <div className="deletion-actions">
+                    <button type="button" ref={deleteCancelRef} onClick={() => setPendingDelete(null)}>취소</button>
                     <button
                       type="button"
                       onClick={() => {
-                        setDetailRecord(null);
-                        openEditor(detailRecord);
+                        const { id } = pendingDelete;
+                        setPendingDelete(null);
+                        removeRecord(id);
                       }}
                     >
-                      <Pencil size={15} /> 수정
-                    </button>
-                    <button
-                      type="button"
-                      className="delete-record"
-                      onClick={() => removeRecord(detailRecord.id)}
-                    >
-                      <Trash2 size={15} /> 삭제
+                      삭제
                     </button>
                   </div>
                 </section>
@@ -1239,7 +1258,7 @@ function TransactionsContent() {
                             }
                           >
                             {(currentCategoryOptions[category] ?? []).map((item) => (
-                              <option key={item}>{item}</option>
+                              <option key={item} value={item}>{item || "미분류"}</option>
                             ))}
                           </select>
                         </label>
