@@ -130,6 +130,7 @@ export function IconButton({
   filled,
   tone = "neutral",
   badge,
+  disabled,
 }: {
   icon: IconName;
   label: string;
@@ -138,20 +139,24 @@ export function IconButton({
   /** "accent": sienna on the peach accent card. */
   tone?: "neutral" | "danger" | "accent";
   badge?: ReactNode;
+  disabled?: boolean;
 }) {
   const { c } = useTheme();
   const color = tone === "danger" ? c.danger : tone === "accent" ? c.onPrimaryContainer : c.text;
   return (
     <Pressable
       onPress={onPress}
+      disabled={disabled}
       accessibilityRole="button"
       accessibilityLabel={label}
+      accessibilityState={{ disabled }}
       hitSlop={4}
       style={({ pressed }) => [
         styles.icon,
         tone === "accent"
           ? { opacity: pressed ? 0.6 : 1 }
           : { backgroundColor: pressed ? c.fill : filled ? c.subtle : "transparent" },
+        disabled && { opacity: opacity.disabled },
       ]}
     >
       <Icon name={icon} size={22} color={color} />

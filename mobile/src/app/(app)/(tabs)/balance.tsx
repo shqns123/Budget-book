@@ -3,7 +3,7 @@ import { StyleSheet, View } from "react-native";
 import { MonthChip } from "@/components/ledger/ScopeControls";
 import { ChipRow, Row, Screen, Section, Text } from "@/components/ui";
 import { lastDayOfMonth, monthLabel } from "@/lib/dates";
-import { calculateAccountBalances, signedWon, won, type Account } from "@/lib/ledger";
+import { calculateAccountBalances, majorLabel, signedWon, won, type Account } from "@/lib/ledger";
 import { useLedger } from "@/store/ledger-store";
 import { usePrefs } from "@/store/prefs-store";
 import { useTheme } from "@/theme/theme";
@@ -97,7 +97,7 @@ function BalanceGroups({
         {heading}
       </Text>
       {groups.map((group) => {
-        const label = group[0].type === "card" ? cardGroup(group[0]) : group[0].majorCategory;
+        const label = group[0].type === "card" ? cardGroup(group[0]) : majorLabel(group[0].majorCategory);
         const sum = group.reduce((total, a) => {
           const amount = amounts.get(a.id) ?? 0;
           return total + (signed ? amount : Math.abs(amount));

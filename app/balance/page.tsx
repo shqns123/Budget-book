@@ -6,6 +6,7 @@ import {
   accountDetails,
   calculateAccountBalances,
   hydrateLedgerSettings,
+  majorLabel,
   initialTransactions,
   type AccountDetails,
   type Transaction,
@@ -145,7 +146,7 @@ function BalanceGroup({
                 ? group[0].minorCategory.includes("할부")
                   ? "할부"
                   : "일시불"
-                : group[0].majorCategory}
+                : majorLabel(group[0].majorCategory)}
             </b>
             <strong>
               {displayAmount(

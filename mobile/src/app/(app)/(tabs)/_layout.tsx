@@ -72,29 +72,34 @@ export default function TabsLayout() {
   );
 }
 
-const SLIDE_MS = 300;
+const SLIDE_MS = 360;
+/** How far a screen travels, as a share of the window width (a short, soft move, not a shove). */
+const SHIFT = 0.24;
 
 /**
- * One tab's screen. Switching tabs slides the screens sideways: going to a tab on the right, the
- * new screen comes in from the right as the old one leaves to the left (and the other way round).
- * Tabs not on show wait off to the side, hidden from touch and screen readers.
+ * One tab's screen. Switching tabs moves the screens a short way sideways while they cross-fade:
+ * going to a tab on the right, the new screen drifts in from the right as the old one fades out to
+ * the left (and the other way round). The old screen is gone by a third of the way, so the two
+ * never read as one smear. Tabs not on show wait faded out, hidden from touch and screen readers.
+ *
+ * `pos` is the screen's place in SHIFT units: 0 on show, 1 to the right, -1 to the left.
  */
 function TabScene({ focused, dir, children }: { focused: boolean; dir: number; children: ReactNode }) {
   const { width } = useWindowDimensions();
   const reduceMotion = useReducedMotion();
-  // A tab opened for the first time slides in from its side; the first one is just there.
-  const [x] = useState(() => new Animated.Value(focused ? dir * width : width));
+  // A tab opened for the first time comes in from its side; the first one is just there.
+  const [pos] = useState(() => new Animated.Value(focused ? dir : 1));
   useEffect(() => {
-    const to = focused ? 0 : -dir * width;
-    if (focused) x.setValue(dir * width);
     if (reduceMotion || dir === 0) {
-      x.setValue(focused ? 0 : width);
+      pos.setValue(focused ? 0 : 1);
       return;
     }
-    const anim = Animated.timing(x, {
-      toValue: to,
+    if (focused) pos.setValue(dir);
+    const anim = Animated.timing(pos, {
+      toValue: focused ? 0 : -dir,
       duration: SLIDE_MS,
-      easing: Easing.bezier(0.2, 0, 0, 1),
+      // Ease in and out: no jolt as it starts, a long soft landing.
+      easing: Easing.bezier(0.33, 0, 0, 1),
       useNativeDriver: true,
     });
     anim.start();
@@ -102,12 +107,19 @@ function TabScene({ focused, dir, children }: { focused: boolean; dir: number; c
     // Runs when this tab gains or loses focus only: `dir` changing alone (a switch between two
     // other tabs) must not move a tab that is off to the side.
   }, [focused]); // eslint-disable-line react-hooks/exhaustive-deps
+  const translateX = pos.interpolate({ inputRange: [-1, 1], outputRange: [-width * SHIFT, width * SHIFT] });
+  // Faded out beyond 0.6 either way: the leaving screen clears early, the coming one fills in late.
+  const opacity = pos.interpolate({
+    inputRange: [-1, -0.6, 0, 0.6, 1],
+    outputRange: [0, 0, 1, 0, 0],
+    extrapolate: "clamp",
+  });
   return (
     <Animated.View
       pointerEvents={focused ? "auto" : "none"}
       importantForAccessibility={focused ? "auto" : "no-hide-descendants"}
       accessibilityElementsHidden={!focused}
-      style={[StyleSheet.absoluteFill, { transform: [{ translateX: x }] }]}
+      style={[StyleSheet.absoluteFill, { opacity, transform: [{ translateX }] }]}
     >
       {children}
     </Animated.View>

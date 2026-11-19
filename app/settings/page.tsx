@@ -2,7 +2,10 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  ArrowUpDown,
   Check,
+  ChevronDown,
+  ChevronUp,
   CirclePlus,
   CreditCard,
   EyeOff,
@@ -18,7 +21,10 @@ import { readSharedState, saveSharedState } from "@/lib/shared-state";
 import {
   formatNumber,
   hydrateLedgerSettings,
+  classificationLabel,
   inferCategoryTransactionType,
+  majorLabel,
+  moveAccount,
   parseNumberInput,
   type RecurringExpenseTemplate,
   type Transaction,
@@ -89,6 +95,7 @@ export default function SettingsPage() {
     day: "1",
   });
   const [showAdd, setShowAdd] = useState(false);
+  const [reordering, setReordering] = useState(false);
   const [draft, setDraft] = useState({
     name: "",
     kind: "bank" as Kind,
@@ -300,6 +307,10 @@ export default function SettingsPage() {
       { major, minor, fixed: false, transactionType },
     ]);
   }
+  /** One place up (-1) or down (+1) within its group; saved with the settings like any edit. */
+  function move(id: string, step: -1 | 1) {
+    setAccounts((rows) => moveAccount(rows, id, step));
+  }
   function toggleHidden(id: string) {
     setAccounts((rows) =>
       rows.map((account) =>
@@ -402,15 +413,72 @@ export default function SettingsPage() {
             <section className="setting-table">
               <header>
                 <h2>계좌와 시작 잔액</h2>
-                <button onClick={() => setShowAdd(true)}>
-                  <CirclePlus size={16} /> 계좌 추가
-                </button>
+                <div className="header-actions">
+                  <button
+                    onClick={() => setReordering(!reordering)}
+                    className={reordering ? "chosen" : ""}
+                    aria-pressed={reordering}
+                  >
+                    {reordering ? <Check size={16} /> : <ArrowUpDown size={16} />}
+                    {reordering ? "완료" : "순서 변경"}
+                  </button>
+                  {!reordering && (
+                    <button onClick={() => setShowAdd(true)}>
+                      <CirclePlus size={16} /> 계좌 추가
+                    </button>
+                  )}
+                </div>
               </header>
+              {reordering && (
+                <p className="setting-guide">
+                  바꾼 순서는 거래내역과 통장별 지출의 통장 목록에도 그대로 쓰여요.
+                </p>
+              )}
               {grouped.map(({ classification, rows }) => (
                 <div className="account-group" key={classification}>
-                  <h3>{classification}</h3>
-                  {rows.map((account) => {
+                  <h3>{classificationLabel(classification)}</h3>
+                  {rows.map((account, index) => {
                     const Icon = icons[account.kind];
+                    if (reordering)
+                      return (
+                        <article
+                          key={account.id}
+                          className={
+                            account.hidden
+                              ? "account-setting reordering is-hidden"
+                              : "account-setting reordering"
+                          }
+                        >
+                          <span className="account-code">{account.code}</span>
+                          <i>
+                            <Icon size={16} />
+                          </i>
+                          <div>
+                            <b>{account.name}</b>
+                            <small>
+                              {majorLabel(account.major)} · {account.minor}
+                            </small>
+                          </div>
+                          <div className="move-buttons">
+                            <button
+                              disabled={index === 0}
+                              aria-label={`${account.name} 위로`}
+                              title="위로"
+                              onClick={() => move(account.id, -1)}
+                            >
+                              <ChevronUp size={16} />
+                            </button>
+                            <button
+                              disabled={index === rows.length - 1}
+                              aria-label={`${account.name} 아래로`}
+                              title="아래로"
+                              onClick={() => move(account.id, 1)}
+                            >
+                              <ChevronDown size={16} />
+                            </button>
+                          </div>
+                        </article>
+                      );
                     return (
                       <article
                         key={account.id}
@@ -427,7 +495,7 @@ export default function SettingsPage() {
                         <div>
                           <b>{account.name}</b>
                           <small>
-                            {account.major} · {account.minor}
+                            {majorLabel(account.major)} · {account.minor}
                             {account.paymentDay
                               ? ` · ${account.paymentDay}일 결제/상환`
                               : ""}
@@ -852,7 +920,7 @@ export default function SettingsPage() {
                       }
                     >
                       <option>자산</option>
-                      <option>단기부채</option>
+                      <option value="단기부채">미결제 금액</option>
                       <option>장기부채</option>
                     </select>
                   </label>

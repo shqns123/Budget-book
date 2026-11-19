@@ -3574,3 +3574,169 @@ a {
   font-size: 13px;
   font-weight: 700;
 }
+
+/* Report cards that fold (분류별 지출 · 이번 달 큰 지출): a <details> whose summary is the header. */
+.report-grid {
+  align-items: start;
+}
+.report-fold > summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  list-style: none;
+  cursor: pointer;
+}
+.report-fold > summary::-webkit-details-marker {
+  display: none;
+}
+.report-fold > summary > span {
+  margin-left: auto;
+  color: var(--slate);
+  font-size: 11px;
+}
+.report-fold > summary:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 4px;
+  border-radius: 8px;
+}
+.fold-chevron {
+  flex: none;
+  color: var(--slate);
+  transition: transform 0.24s cubic-bezier(0.2, 0, 0, 1);
+}
+.report-fold[open] .fold-chevron {
+  transform: rotate(90deg);
+}
+.report-fold[open] > summary {
+  margin-bottom: 12px;
+}
+/* Where the browser can animate to auto height, the body eases open instead of jumping. */
+@supports (interpolate-size: allow-keywords) {
+  .report-fold {
+    interpolate-size: allow-keywords;
+  }
+  .report-fold::details-content {
+    height: 0;
+    overflow: hidden;
+    transition:
+      height 0.28s cubic-bezier(0.2, 0, 0, 1),
+      content-visibility 0.28s allow-discrete;
+  }
+  .report-fold[open]::details-content {
+    height: auto;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .fold-chevron,
+  .report-fold::details-content {
+    transition: none;
+  }
+}
+
+/* 통장별 지출: an account wheel in the header, the donut beside its legend. */
+.account-donut header {
+  align-items: center;
+}
+.donut-body {
+  display: grid;
+  grid-template-columns: 168px 1fr;
+  gap: 28px;
+  align-items: center;
+  margin-top: 20px;
+}
+.donut-chart {
+  position: relative;
+  width: 168px;
+  height: 168px;
+}
+.donut-center {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  gap: 2px;
+  text-align: center;
+  pointer-events: none;
+}
+.donut-center span {
+  color: var(--slate);
+  font-size: 11px;
+}
+.donut-center strong {
+  font:
+    400 17px Georgia,
+    serif;
+  font-variant-numeric: tabular-nums;
+}
+.donut-legend {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.donut-legend li {
+  display: grid;
+  grid-template-columns: 10px minmax(0, 1fr) auto auto;
+  gap: 9px;
+  align-items: center;
+  padding: 9px 2px;
+  border-bottom: 1px solid #eee;
+  font-size: 12px;
+}
+.donut-legend i {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+.donut-legend b {
+  overflow: hidden;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.donut-legend span {
+  color: var(--slate);
+  font-variant-numeric: tabular-nums;
+}
+.donut-legend strong {
+  min-width: 84px;
+  font-weight: 600;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.donut-empty {
+  margin: 16px 0 0;
+  color: var(--slate);
+  font-size: 12px;
+}
+@media (max-width: 800px) {
+  .donut-body {
+    grid-template-columns: 1fr;
+    justify-items: center;
+  }
+  .donut-legend {
+    width: 100%;
+  }
+}
+
+/* 가계부 설정 → 계좌: 순서 변경 swaps each row's balance and hide button for up / down. */
+.setting-table > header .header-actions {
+  display: flex;
+  gap: 4px;
+}
+.setting-table > header button.chosen {
+  color: var(--sienna);
+  font-weight: 700;
+}
+.account-setting .move-buttons {
+  display: flex;
+  gap: 4px;
+}
+.account-setting.reordering {
+  grid-template-columns: 75px 34px 1fr auto;
+}
+@media (max-width: 800px) {
+  .account-setting.reordering {
+    grid-template-columns: 34px 1fr auto;
+  }
+}

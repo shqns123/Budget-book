@@ -115,6 +115,35 @@ export const emptySettings = (): SharedSettings => ({
   fiscalMonth: 1,
 });
 
+const ACCOUNT_GROUPS: AccountSetting["classification"][] = ["자산", "단기부채", "장기부채"];
+
+/**
+ * On screen, 단기부채 reads 미결제 금액 (card balances not yet paid). Only the label changes: the
+ * stored value stays 단기부채, so existing ledgers, the web and the rules that read it still agree.
+ */
+export const classificationLabel = (classification: AccountSetting["classification"]) =>
+  classification === "단기부채" ? "미결제 금액" : classification;
+
+/** A stored 대분류 for display: the imported 「🏦단기부채」 reads 「🏦미결제 금액」. */
+export const majorLabel = (major: string) => major.replace("단기부채", "미결제 금액");
+
+/**
+ * Moves an account one place up (-1) or down (+1) within its group (자산 · 단기부채 · 장기부채).
+ * The stored list is the order every account list follows (거래내역, 통장별 지출, pickers), so
+ * it is also regrouped to read 자산 → 단기부채 → 장기부채, as the settings screen shows it.
+ */
+export function moveAccount(accounts: AccountSetting[], id: string, step: -1 | 1): AccountSetting[] {
+  const groups = ACCOUNT_GROUPS.map((group) => accounts.filter((a) => a.classification === group));
+  const rest = accounts.filter((a) => !ACCOUNT_GROUPS.includes(a.classification));
+  const group = groups.find((rows) => rows.some((a) => a.id === id));
+  if (!group) return accounts;
+  const from = group.findIndex((a) => a.id === id);
+  const to = from + step;
+  if (to < 0 || to >= group.length) return accounts;
+  [group[from], group[to]] = [group[to], group[from]];
+  return [...groups.flat(), ...rest];
+}
+
 type StoredAccount = Partial<Omit<AccountSetting, "classification">> & {
   id: string;
   name: string;

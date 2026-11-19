@@ -21,7 +21,10 @@ import {
   TextField,
 } from "@/components/ui";
 import {
+  classificationLabel,
   formatNumber,
+  majorLabel,
+  moveAccount,
   newId,
   typeLabel,
   unmarkedRecurringExpenses,
@@ -145,23 +148,65 @@ function AccountsView({ settings, update }: { settings: SharedSettings; update: 
       accounts: s.accounts.map((a) => (a.id === id ? { ...a, hidden: !a.hidden } : a)),
     }));
 
+  // 순서 변경: each row trades its balance for up / down buttons. The order is the stored list's,
+  // which the transactions tab and 통장별 지출 follow too.
+  const [reordering, setReordering] = useState(false);
+  const move = (id: string, step: -1 | 1) => update((s) => ({ ...s, accounts: moveAccount(s.accounts, id, step) }));
+
   return (
     <>
-      <SecondaryButton icon="plus" label="계좌 추가" onPress={() => setShowAdd(true)} />
+      <View style={styles.accountActions}>
+        <SecondaryButton
+          icon="plus"
+          label="계좌 추가"
+          onPress={() => setShowAdd(true)}
+          disabled={reordering}
+          style={{ flex: 1 }}
+        />
+        <SecondaryButton
+          icon={reordering ? "check" : "sort"}
+          label={reordering ? "완료" : "순서 변경"}
+          tone={reordering ? "accent" : "neutral"}
+          onPress={() => setReordering((v) => !v)}
+          style={{ flex: 1 }}
+        />
+      </View>
       {CLASSIFICATIONS.map((classification) => {
         const rows = settings.accounts.filter((a) => a.classification === classification);
         if (!rows.length) return null;
         return (
-          <FoldSection key={classification} title={classification} meta={`${rows.length}개`}>
+          // Remounted on 순서 변경 so every group opens for it (and folds again after).
+          <FoldSection
+            key={`${classification}-${reordering}`}
+            title={classificationLabel(classification)}
+            meta={`${rows.length}개`}
+            defaultOpen={reordering}
+          >
             {rows.map((account, index) => (
               <Row
                 key={account.id}
                 first={index === 0}
                 icon={accountIcon[account.kind] ?? "bank"}
                 title={account.name}
-                meta={`${account.major} · ${account.minor}${account.paymentDay ? ` · ${account.paymentDay}일 결제/상환` : ""}`}
+                meta={`${majorLabel(account.major)} · ${account.minor}${account.paymentDay ? ` · ${account.paymentDay}일 결제/상환` : ""}`}
                 dimmed={account.hidden}
                 trailing={
+                  reordering ? (
+                    <View style={styles.accountTrailing}>
+                      <IconButton
+                        icon="moveUp"
+                        label={`${account.name} 위로`}
+                        disabled={index === 0}
+                        onPress={() => move(account.id, -1)}
+                      />
+                      <IconButton
+                        icon="moveDown"
+                        label={`${account.name} 아래로`}
+                        disabled={index === rows.length - 1}
+                        onPress={() => move(account.id, 1)}
+                      />
+                    </View>
+                  ) : (
                   <View style={styles.accountTrailing}>
                     <Text variant="subhead" weight="600" tabular>
                       {formatNumber(account.balance)}원
@@ -174,6 +219,7 @@ function AccountsView({ settings, update }: { settings: SharedSettings; update: 
                       />
                     )}
                   </View>
+                  )
                 }
               />
             ))}
@@ -181,7 +227,9 @@ function AccountsView({ settings, update }: { settings: SharedSettings; update: 
         );
       })}
       <Text variant="footnote" weight="400" color="text2">
-        시작 잔액이 0원인 계좌만 숨길 수 있어요.
+        {reordering
+          ? "바꾼 순서는 거래내역과 통장별 지출의 통장 목록에도 그대로 쓰여요."
+          : "시작 잔액이 0원인 계좌만 숨길 수 있어요."}
       </Text>
       <Sheet
         visible={showAdd}
@@ -199,7 +247,7 @@ function AccountsView({ settings, update }: { settings: SharedSettings; update: 
           <SelectField
             label="구분"
             value={draft.classification}
-            options={CLASSIFICATIONS.map((v) => ({ value: v, label: v }))}
+            options={CLASSIFICATIONS.map((v) => ({ value: v, label: classificationLabel(v) }))}
             onChange={(classification) => setDraft({ ...draft, classification })}
           />
           <SelectField
@@ -668,6 +716,7 @@ function RecurringView({ settings }: { settings: SharedSettings }) {
 
 const styles = StyleSheet.create({
   accountTrailing: { flexDirection: "row", alignItems: "center", gap: space.xs },
+  accountActions: { flexDirection: "row", gap: space.sm },
   minor: { borderRadius: radius.control, padding: space.md, gap: space.xs },
   minorHead: { flexDirection: "row", alignItems: "center", gap: space.sm },
 });

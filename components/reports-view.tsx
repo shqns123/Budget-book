@@ -2,8 +2,14 @@
 
 import { useEffect, useState } from "react";
 import { ChevronRight, X } from "lucide-react";
+import { AccountDonut } from "@/components/account-donut";
 import { AppShell } from "@/components/app-shell";
-import { initialTransactions, type Transaction, won } from "@/lib/ledger";
+import {
+  accounts,
+  initialTransactions,
+  type Transaction,
+  won,
+} from "@/lib/ledger";
 import { readSharedState } from "@/lib/shared-state";
 
 type Scope = { month: string; selected: string[] };
@@ -154,6 +160,11 @@ function MonthlyReport({
         <Metric label="이번 달 순수입" value={now.income - now.expense} />
         <Metric label="수입 대비 지출" value={ratio} percentage />
       </section>
+      <AccountDonut
+        records={current}
+        accounts={accounts}
+        categoryOrder={categoryTotals.map(([category]) => category)}
+      />
       <section className="report-surface fixed-report">
         <header>
           <div>
@@ -182,14 +193,14 @@ function MonthlyReport({
           </div>
         </div>
       </section>
+      {/* Folded by default: the summary says how many, a click opens the list. */}
       <section className="report-grid">
-        <article className="report-surface">
-          <header>
-            <div>
-              <h2>분류별 지출</h2>
-            </div>
-            <span>이번 달</span>
-          </header>
+        <details className="report-surface report-fold">
+          <summary>
+            <ChevronRight size={18} className="fold-chevron" />
+            <h2>분류별 지출</h2>
+            <span>{categoryTotals.length}개</span>
+          </summary>
           {categoryTotals.map(([category, amount]) => (
             <button
               type="button"
@@ -203,17 +214,26 @@ function MonthlyReport({
               <ChevronRight size={15} />
             </button>
           ))}
-        </article>
-        <article className="report-surface top-expenses">
-          <h2>이번 달 큰 지출</h2>
-          {topExpenses.map((item, index) => (
-            <div key={item.id}>
-              <span>#{index + 1}</span>
-              <b>{item.name}</b>
-              <strong>−{won(item.amount)}</strong>
-            </div>
-          ))}
-        </article>
+          {categoryTotals.length === 0 && (
+            <p className="donut-empty">이번 달 지출이 없어요</p>
+          )}
+        </details>
+        {topExpenses.length > 0 && (
+          <details className="report-surface top-expenses report-fold">
+            <summary>
+              <ChevronRight size={18} className="fold-chevron" />
+              <h2>이번 달 큰 지출</h2>
+              <span>{topExpenses.length}건</span>
+            </summary>
+            {topExpenses.map((item, index) => (
+              <div key={item.id}>
+                <span>#{index + 1}</span>
+                <b>{item.name}</b>
+                <strong>−{won(item.amount)}</strong>
+              </div>
+            ))}
+          </details>
+        )}
       </section>
       {selectedCategory && (
         <div

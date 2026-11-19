@@ -4,6 +4,7 @@ import { AccountDonut } from "@/components/ledger/AccountDonut";
 import { PeriodChip } from "@/components/ledger/ScopeControls";
 import {
   EmptyState,
+  FoldSection,
   ProgressBar,
   Row,
   Screen,
@@ -112,6 +113,12 @@ function MonthlyReport() {
         ]}
       />
 
+      <AccountDonut
+        records={report.current}
+        accounts={accounts}
+        categoryOrder={report.byCategory.map(([name]) => name)}
+      />
+
       <Section title="고정비와 변동비" padded>
         <View style={{ gap: space.lg }}>
           <SplitLine label="고정비" amount={report.now.fixedExpense} pct={report.fixedRatio} />
@@ -119,7 +126,8 @@ function MonthlyReport() {
         </View>
       </Section>
 
-      <Section title="분류별 지출">
+      {/* Folded by default: the header says how many, a tap opens the list. */}
+      <FoldSection title="분류별 지출" meta={`${report.byCategory.length}개`} smallTitle>
         {report.byCategory.length ? (
           report.byCategory.map(([name, amount], index) => (
             <View key={name}>
@@ -139,16 +147,10 @@ function MonthlyReport() {
         ) : (
           <EmptyState title="이번 달 지출이 없어요" />
         )}
-      </Section>
-
-      <AccountDonut
-        records={report.current}
-        accounts={accounts}
-        categoryOrder={report.byCategory.map(([name]) => name)}
-      />
+      </FoldSection>
 
       {report.top.length > 0 && (
-        <Section title="이번 달 큰 지출">
+        <FoldSection title="이번 달 큰 지출" meta={`${report.top.length}건`} smallTitle>
           {report.top.map((item, index) => (
             <Row
               key={item.id}
@@ -158,9 +160,8 @@ function MonthlyReport() {
               trailing={`−${won(item.amount)}`}
             />
           ))}
-        </Section>
+        </FoldSection>
       )}
-
 
       <Sheet
         visible={Boolean(category)}

@@ -1,7 +1,18 @@
 import { useState } from "react";
-import { ScrollView, StyleSheet, View } from "react-native";
+import { StyleSheet, View } from "react-native";
 import Svg, { Circle } from "react-native-svg";
-import { Chip, EmptyState, Section, Text } from "@/components/ui";
+import {
+  Chip,
+  EmptyState,
+  FoldMenu,
+  PrimaryButton,
+  Section,
+  Text,
+  useFoldAnchor,
+  Wheel,
+  type Anchor,
+  type WheelItem,
+} from "@/components/ui";
 import { won, type Account, type Transaction } from "@/lib/ledger";
 import { useTheme } from "@/theme/theme";
 import { space } from "@/theme/tokens";
@@ -47,16 +58,16 @@ export function AccountDonut({
 }) {
   const { c, dark } = useTheme();
   const expenses = records.filter((r) => r.type === "expense");
-  // Accounts that paid for something this month, biggest spender first.
+  // Accounts that paid for something this month, in the order set in 가계부 설정.
   const spenders = accounts
     .map((account) => ({
       account,
       total: expenses.filter((r) => r.accountId === account.id).reduce((sum, r) => sum + Math.abs(r.amount), 0),
     }))
-    .filter((row) => row.total > 0)
-    .sort((a, b) => b.total - a.total);
+    .filter((row) => row.total > 0);
   const [picked, setPicked] = useState<string | null>(null);
   const current = spenders.find((row) => row.account.id === picked) ?? spenders[0];
+  const { ref: anchorRef, anchor, open, show, hide, clear } = useFoldAnchor();
 
   const slots = dark ? SLOTS.dark : SLOTS.light;
   const colorOf = (category: string) => {
@@ -79,19 +90,35 @@ export function AccountDonut({
   }
 
   return (
-    <Section title="통장별 지출" padded>
+    <Section
+      title="통장별 지출"
+      padded
+      action={
+        current ? (
+          <View ref={anchorRef} collapsable={false} style={styles.chipWrap}>
+            <Chip
+              label={current.account.name}
+              trailingIcon="chevronDown"
+              accessibilityLabel={`통장, ${current.account.name}`}
+              onPress={show}
+            />
+          </View>
+        ) : undefined
+      }
+    >
       {current ? (
         <View style={{ gap: space.lg }}>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
-            {spenders.map(({ account }) => (
-              <Chip
-                key={account.id}
-                label={account.name}
-                selected={account.id === current.account.id}
-                onPress={() => setPicked(account.id)}
-              />
-            ))}
-          </ScrollView>
+          {anchor ? (
+            <AccountWheelMenu
+              items={spenders.map(({ account }) => ({ value: account.id, label: account.name }))}
+              value={current.account.id}
+              anchor={anchor}
+              visible={open}
+              onPick={setPicked}
+              onClose={hide}
+              onClosed={clear}
+            />
+          ) : null}
           <View style={styles.chart}>
             <Donut slices={slices} total={current.total} track={c.subtle} />
             <View style={styles.center} pointerEvents="none">
@@ -128,6 +155,49 @@ export function AccountDonut({
   );
 }
 
+/**
+ * The accounts on a wheel, unfolding out of the header chip. Mounted fresh for each opening; the
+ * pick is shown when the panel closes (완료, or a tap outside).
+ */
+function AccountWheelMenu({
+  items,
+  value,
+  anchor,
+  visible,
+  onPick,
+  onClose,
+  onClosed,
+}: {
+  items: WheelItem<string>[];
+  value: string;
+  anchor: Anchor;
+  visible: boolean;
+  onPick: (id: string) => void;
+  onClose: () => void;
+  onClosed: () => void;
+}) {
+  const [pick, setPick] = useState(value);
+  const close = () => {
+    if (pick !== value) onPick(pick);
+    onClose();
+  };
+  return (
+    <FoldMenu
+      anchor={anchor}
+      visible={visible}
+      onClose={close}
+      onClosed={onClosed}
+      maxWidth={280}
+      accessibilityLabel="통장 선택"
+    >
+      <View style={{ gap: space.md }}>
+        <Wheel items={items} value={value} onChange={setPick} accessibilityLabel="통장" />
+        <PrimaryButton label="완료" onPress={close} />
+      </View>
+    </FoldMenu>
+  );
+}
+
 function Donut({ slices, total, track }: { slices: Slice[]; total: number; track: string }) {
   const gap = slices.length > 1 ? GAP : 0;
   const lengths = slices.map((slice) => (slice.amount / total) * CIRCUMFERENCE);
@@ -161,7 +231,7 @@ function Donut({ slices, total, track }: { slices: Slice[]; total: number; track
 }
 
 const styles = StyleSheet.create({
-  chips: { gap: space.sm },
+  chipWrap: { maxWidth: 200 },
   chart: { alignItems: "center", justifyContent: "center" },
   center: {
     position: "absolute",
