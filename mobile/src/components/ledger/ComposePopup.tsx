@@ -44,6 +44,7 @@ import {
   type Transaction,
   type TransactionType,
 } from "@/lib/ledger";
+import { pastCategory, type CategorySource } from "@/lib/category-history";
 import { useLedger } from "@/store/ledger-store";
 import { usePrefs } from "@/store/prefs-store";
 import { useTheme } from "@/theme/theme";
@@ -60,7 +61,21 @@ type ImageDraft = {
   category: string;
   minorCategory: string;
   confidence: number;
+  /** "history": taken from a record with a similar name; "model": the photo reader's pick. */
+  categoryFrom?: CategorySource;
 };
+
+/**
+ * The photo reader picks a 분류 from the list; a record of mine with a similar name ("스타벅스"
+ * ↔ "스타벅스 강남점") knows better, so its 분류 wins.
+ */
+function withPastCategory(draft: ImageDraft, transactions: Transaction[]): ImageDraft {
+  if (draft.type === "transfer") return draft;
+  const past = pastCategory(draft.name, draft.type, transactions);
+  return past
+    ? { ...draft, category: past.category, minorCategory: past.minorCategory ?? "", categoryFrom: "history" }
+    : { ...draft, categoryFrom: "model" };
+}
 
 const TYPE_OPTIONS = [
   { value: "expense" as const, label: "지출" },
@@ -357,7 +372,7 @@ function ComposeForm({ params, popup }: { params: Params; popup: PopupFrame }) {
         throw new Error(payload.error || "사진에서 거래를 찾지 못했어요.");
       }
       setRecurringBatch(null);
-      setImageBatch(payload.transactions);
+      setImageBatch(payload.transactions.map((item) => withPastCategory(item, data.transactions)));
     } catch (error) {
       setImageError(error instanceof Error ? error.message : "사진을 분석하지 못했어요.");
     } finally {
@@ -380,7 +395,13 @@ function ComposeForm({ params, popup }: { params: Params; popup: PopupFrame }) {
     }
     const opts = categoryOptions(categories, next);
     const first = Object.keys(opts)[0] ?? "";
-    updateDraft(draft.id, { type: next, category: first, minorCategory: opts[first]?.[0] ?? "", toAccountId: "" });
+    updateDraft(draft.id, {
+      type: next,
+      category: first,
+      minorCategory: opts[first]?.[0] ?? "",
+      toAccountId: "",
+      categoryFrom: undefined,
+    });
   };
 
   const registerImages = async () => {
@@ -496,7 +517,14 @@ function ComposeForm({ params, popup }: { params: Params; popup: PopupFrame }) {
                       onPress={() => setImageBatch((rows) => rows?.filter((r) => r.id !== draft.id) ?? null)}
                     />
                   </View>
-                  {draft.confidence < 0.75 && <Tag label="확인 필요" tone="warn" />}
+                  {draft.confidence < 0.75 || (draft.categoryFrom && draft.type !== "transfer") ? (
+                    <View style={styles.draftTags}>
+                      {draft.confidence < 0.75 ? <Tag label="확인 필요" tone="warn" /> : null}
+                      {draft.categoryFrom && draft.type !== "transfer" ? (
+                        <Tag label={draft.categoryFrom === "history" ? "지난 기록 분류" : "추천 분류"} />
+                      ) : null}
+                    </View>
+                  ) : null}
                   <TextField
                     label="내용"
                     value={draft.name}
@@ -511,24 +539,22 @@ function ComposeForm({ params, popup }: { params: Params; popup: PopupFrame }) {
                       onChange={(digits) => updateDraft(draft.id, { amount: Number(digits) })}
                     />
                   </FieldRow>
-                  <FieldRow>
+                  <SelectField
+                    compact
+                    label={draft.type === "income" ? "입금 통장" : "출금 통장"}
+                    value={draft.accountId}
+                    options={accountOptions}
+                    onChange={(value) => updateDraft(draft.id, { accountId: value })}
+                  />
+                  {draft.type === "transfer" ? (
                     <SelectField
                       compact
-                      label={draft.type === "income" ? "입금 통장" : "출금 통장"}
-                      value={draft.accountId}
-                      options={accountOptions}
-                      onChange={(value) => updateDraft(draft.id, { accountId: value })}
+                      label="입금 통장"
+                      value={draft.toAccountId}
+                      options={accountOptions.filter((o) => o.value !== draft.accountId)}
+                      onChange={(value) => updateDraft(draft.id, { toAccountId: value })}
                     />
-                    {draft.type === "transfer" ? (
-                      <SelectField
-                        compact
-                        label="입금 통장"
-                        value={draft.toAccountId}
-                        options={accountOptions.filter((o) => o.value !== draft.accountId)}
-                        onChange={(value) => updateDraft(draft.id, { toAccountId: value })}
-                      />
-                    ) : null}
-                  </FieldRow>
+                  ) : null}
                   {draft.type !== "transfer" && (
                     <FieldRow>
                       <SelectField
@@ -537,7 +563,11 @@ function ComposeForm({ params, popup }: { params: Params; popup: PopupFrame }) {
                         value={draft.category}
                         options={Object.keys(opts).map((k) => ({ value: k, label: k }))}
                         onChange={(value) =>
-                          updateDraft(draft.id, { category: value, minorCategory: opts[value]?.[0] ?? "" })
+                          updateDraft(draft.id, {
+                            category: value,
+                            minorCategory: opts[value]?.[0] ?? "",
+                            categoryFrom: undefined,
+                          })
                         }
                       />
                       <SelectField
@@ -545,7 +575,7 @@ function ComposeForm({ params, popup }: { params: Params; popup: PopupFrame }) {
                         label="소분류"
                         value={draft.minorCategory}
                         options={(opts[draft.category] ?? []).map((k) => ({ value: k, label: k }))}
-                        onChange={(value) => updateDraft(draft.id, { minorCategory: value })}
+                        onChange={(value) => updateDraft(draft.id, { minorCategory: value, categoryFrom: undefined })}
                       />
                     </FieldRow>
                   )}
@@ -660,10 +690,11 @@ function ComposeForm({ params, popup }: { params: Params; popup: PopupFrame }) {
                 }}
               />
               {type === "transfer" ? (
-                <FieldRow>
+                // One under the other: long account names stay readable.
+                <>
                   <SelectField label="출금 통장" value={accountId} options={accountOptions} onChange={setAccountId} />
                   <SelectField label="입금 통장" value={toAccountId} options={accountOptions} onChange={setToAccountId} />
-                </FieldRow>
+                </>
               ) : (
                 <>
                   <SelectField
@@ -749,4 +780,5 @@ const styles = StyleSheet.create({
   linkBox: { borderRadius: radius.card, padding: space.lg, gap: space.md },
   draft: { borderRadius: radius.card, padding: space.lg, gap: space.md },
   draftHead: { flexDirection: "row", alignItems: "center", gap: space.sm },
+  draftTags: { flexDirection: "row", flexWrap: "wrap", gap: space.xs },
 });

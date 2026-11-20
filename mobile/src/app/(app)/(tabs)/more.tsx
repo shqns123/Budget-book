@@ -1,11 +1,20 @@
+import Constants from "expo-constants";
 import { router } from "expo-router";
 import { Row, Screen, Section, Text } from "@/components/ui";
 import { useInbox } from "@/store/inbox-store";
 import { useSession } from "@/store/session-store";
 import { confirm } from "@/lib/confirm";
 
+/** "1.0.0 (빌드 8)": the build number is the versionCode the APK / AAB was built with. */
+function appVersion() {
+  const config = Constants.expoConfig;
+  const build = config?.android?.versionCode;
+  const dev = config?.extra?.appVariant === "development";
+  return `${config?.version ?? "?"}${build ? ` (빌드 ${build})` : ""}${dev ? " · 개발 앱" : ""}`;
+}
+
 export default function MoreScreen() {
-  const { serverUrl, signOut } = useSession();
+  const { signOut } = useSession();
   const inbox = useInbox();
   const inboxMeta = !inbox.supported
     ? "Android 앱에서 카드 승인·출금 알림을 모아요"
@@ -18,8 +27,8 @@ export default function MoreScreen() {
         <Row icon="settings" title="가계부 설정" meta="통장 · 분류 · 월 예산 · 반복 지출" chevron onPress={() => router.push("/settings")} />
         <Row icon="members" title="멤버" meta="가계부를 함께 쓰는 사람 · 초대" chevron onPress={() => router.push("/members")} />
       </Section>
-      <Section title="연결">
-        <Row first icon="server" title="서버" meta={serverUrl.replace(/^https?:\/\//, "")} />
+      <Section title="앱">
+        <Row first icon="info" title="버전" meta={appVersion()} />
         <Row
           icon="logout"
           iconTone="danger"

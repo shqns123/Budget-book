@@ -4,11 +4,13 @@
  */
 import {
   classify,
+  guessAccount,
   sourceAccount,
   type Classification,
   type ClassifyContext,
   type NoticeDraft,
 } from "./classify";
+import { currentCategory } from "@/lib/ledger";
 import type { ParsedNotice } from "./parse";
 
 export type InboxItem = {
@@ -24,7 +26,7 @@ export type InboxItem = {
   parsed: ParsedNotice | null;
   status: "ready" | "analyzing" | "unread";
   /** The 분류 the model suggested, for a notice only it could read. */
-  modelCategory?: { category: string; minorCategory: string };
+  modelCategory?: { category: string; minorCategory: string; categoryId?: string };
   /** What the user changed in the editor: laid over what the rules filled in. */
   edits: Partial<NoticeDraft>;
 };
@@ -39,9 +41,10 @@ export type InboxView = {
    * notice (`parsed.bill`), or the 입금 notice of the same move (my own money arriving).
    */
   paired?: InboxItem;
-  /** Filter key: the ledger account, or the notice's card / account until it's linked. */
+  /** Filter key: the ledger account, or the notice's card / account while it has none. */
   sourceKey: string;
   sourceLabel: string;
+  /** The draft has a ledger account (found by 메모 number, or picked). */
   linked: boolean;
 };
 
@@ -74,11 +77,16 @@ function unreadClassification(item: InboxItem): Classification {
 function classifyItem(item: InboxItem, ctx: ClassifyContext): Classification {
   if (!item.parsed) return unreadClassification(item);
   const result = classify(item.parsed, ctx);
-  const model = item.modelCategory;
-  if (model?.category && !result.draft.category && result.draft.type !== "transfer") {
-    return { ...result, draft: { ...result.draft, ...model } };
-  }
-  return result;
+  const type = result.draft.type;
+  if (!item.modelCategory?.category || result.draft.category || type === "transfer") return result;
+  // The model's 분류 as it is now (by id, after a rename); a 분류 that is gone isn't filled in.
+  const model = currentCategory(item.modelCategory, type, ctx.categories);
+  if (!model) return result;
+  return {
+    ...result,
+    draft: { ...result.draft, category: model.category, minorCategory: model.minorCategory },
+    categoryFrom: "model",
+  };
 }
 
 const PAIR_WINDOW = 10 * 60 * 1000;
@@ -153,7 +161,7 @@ export function buildViews(items: InboxItem[], ctx: ClassifyContext, accountName
     .map((item): InboxView => {
       const bill = bills.get(item.id);
       const paired = bill ?? pairedIn.get(item.id);
-      const pairedTo = !bill && paired?.parsed ? ctx.rules.sources[paired.parsed.source.key] : undefined;
+      const pairedTo = !bill && paired?.parsed ? guessAccount(paired.parsed.source, ctx.accounts) : undefined;
       const classification =
         bill?.parsed && item.parsed
           ? classifyBill(item.parsed, bill.parsed, ctx)
@@ -166,7 +174,7 @@ export function buildViews(items: InboxItem[], ctx: ClassifyContext, accountName
       const sourceLabel = linked
         ? accountName(draft.accountId)
         : item.parsed
-          ? `${item.parsed.source.label} (미연결)`
+          ? `${item.parsed.source.label} (통장 없음)`
           : "읽지 못한 알림";
       return { item, classification, draft, paired, sourceKey, sourceLabel, linked };
     });

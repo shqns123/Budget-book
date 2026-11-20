@@ -12,6 +12,9 @@ import {
 import { AppState } from "react-native";
 import * as Capture from "../../modules/notification-capture";
 import { apiJson } from "@/lib/api";
+import { suggestionKey, type SuggestedCategory } from "@/lib/category-history";
+import { currentCategory } from "@/lib/ledger";
+import { confirm } from "@/lib/confirm";
 import { defaultRules, type NoticeDraft, type NoticeRules } from "@/lib/notices/classify";
 import type { InboxItem } from "@/lib/notices/inbox";
 import { looksLikePayment, parseNotice, sourceFor, type RawNotice } from "@/lib/notices/parse";
@@ -23,6 +26,12 @@ const ITEMS_KEY = "ledger-notice-inbox";
 const RULES_KEY = "ledger-notice-rules";
 const FILTER_KEY = "ledger-notice-filter";
 const MAX_ITEMS = 300;
+/** The model's 분류 추천 by name, so each 가맹점 is asked once. */
+const SUGGEST_KEY = "ledger-notice-category-suggestions";
+const MAX_SUGGESTIONS = 500;
+const SUGGEST_BATCH = 20;
+/** Asked once per app start (not on every remount of the signed-in screens). */
+let accessAsked = false;
 
 type ModelNotice = {
   isTransaction: boolean;
@@ -59,6 +68,10 @@ type InboxStore = {
   /** The 출처 wheel's pick ("" = 전체). */
   filter: string;
   setFilter: (key: string) => void;
+  /** 분류 the server model suggested, by suggestionKey ("" when it couldn't tell). */
+  suggested: Record<string, SuggestedCategory>;
+  /** Asks the model once for names with no 분류 and no similar record yet. */
+  suggestCategories: (wanted: { name: string; type: "income" | "expense" }[]) => void;
 };
 
 const InboxContext = createContext<InboxStore | null>(null);
@@ -84,6 +97,59 @@ export function InboxProvider({ children }: { children: ReactNode }) {
     categoriesRef.current = categories;
   }, [categories]);
   const syncing = useRef<Promise<void> | null>(null);
+  const [suggested, setSuggestedState] = useState<Record<string, SuggestedCategory>>({});
+  const suggestedRef = useRef(suggested);
+  const asking = useRef(new Set<string>());
+  const suggestFailedAt = useRef(0);
+
+  const suggestCategories = useCallback((wanted: { name: string; type: "income" | "expense" }[]) => {
+    if (Date.now() - suggestFailedAt.current < 60_000 || !categoriesRef.current.length) return;
+    const fresh = new Map<string, { name: string; type: "income" | "expense" }>();
+    for (const item of wanted) {
+      const key = suggestionKey(item.name, item.type);
+      if (item.name.trim() && !(key in suggestedRef.current) && !asking.current.has(key)) fresh.set(key, item);
+    }
+    const batch = [...fresh.entries()].slice(0, SUGGEST_BATCH);
+    if (!batch.length) return;
+    for (const [key] of batch) asking.current.add(key);
+    void (async () => {
+      try {
+        const { suggestions } = await apiJson<{ suggestions: SuggestedCategory[] }>(
+          "/api/transactions/suggest-category",
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              items: batch.map(([, item]) => item),
+              categories: categoriesRef.current.map((c) => ({
+                majorCategory: c.majorCategory,
+                minorCategory: c.minorCategory,
+                transactionType: c.transactionType,
+              })),
+            }),
+          },
+        );
+        // Kept even when empty, so a name the model couldn't place isn't asked again.
+        const next = { ...suggestedRef.current };
+        batch.forEach(([key, item], index) => {
+          const s = suggestions?.[index];
+          const names = { category: s?.category ?? "", minorCategory: s?.minorCategory ?? "" };
+          // With the row's id, so the suggestion survives a rename of the 분류.
+          const row = names.category ? currentCategory(names, item.type, categoriesRef.current) : undefined;
+          next[key] = row?.categoryId ? { ...names, categoryId: row.categoryId } : names;
+        });
+        const trimmed = Object.fromEntries(Object.entries(next).slice(-MAX_SUGGESTIONS));
+        suggestedRef.current = trimmed;
+        setSuggestedState(trimmed);
+        void AsyncStorage.setItem(SUGGEST_KEY, JSON.stringify(trimmed)).catch(() => undefined);
+      } catch {
+        // Offline or the server said no: try again a minute later.
+        suggestFailedAt.current = Date.now();
+      } finally {
+        for (const [key] of batch) asking.current.delete(key);
+      }
+    })();
+  }, []);
 
   const setItems = useCallback((update: (current: InboxItem[]) => InboxItem[]) => {
     const next = update(itemsRef.current).slice(0, MAX_ITEMS);
@@ -134,7 +200,12 @@ export function InboxProvider({ children }: { children: ReactNode }) {
                     via: "model",
                   },
                   modelCategory: notice.category
-                    ? { category: notice.category, minorCategory: notice.minorCategory }
+                    ? (() => {
+                        const names = { category: notice.category, minorCategory: notice.minorCategory };
+                        const type = notice.direction === "in" ? "income" : "expense";
+                        const row = currentCategory(names, type, categoriesRef.current);
+                        return row?.categoryId ? { ...names, categoryId: row.categoryId } : names;
+                      })()
                     : undefined,
                 },
           ),
@@ -174,7 +245,12 @@ export function InboxProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     void (async () => {
       try {
-        const entries = Object.fromEntries(await AsyncStorage.multiGet([ITEMS_KEY, RULES_KEY, FILTER_KEY]));
+        const entries = Object.fromEntries(
+          await AsyncStorage.multiGet([ITEMS_KEY, RULES_KEY, FILTER_KEY, SUGGEST_KEY]),
+        );
+        const cached = readJson<Record<string, SuggestedCategory>>(entries[SUGGEST_KEY], {});
+        suggestedRef.current = cached && typeof cached === "object" ? cached : {};
+        setSuggestedState(suggestedRef.current);
         const saved = readJson<InboxItem[]>(entries[ITEMS_KEY], []);
         itemsRef.current = Array.isArray(saved) ? saved : [];
         setItemsState(itemsRef.current);
@@ -202,6 +278,20 @@ export function InboxProvider({ children }: { children: ReactNode }) {
       appState.remove();
     };
   }, [ready, sync, analyze]);
+
+  // Each time the app starts with 알림 접근 off: offer to turn it on.
+  useEffect(() => {
+    if (accessAsked || !Capture.isSupported || Capture.hasAccess()) return;
+    accessAsked = true;
+    void confirm({
+      title: "결제 알림 읽기를 켤까요?",
+      message:
+        "카드 승인·출금 알림을 결제 알림 대기함에 모으려면 알림 접근이 필요해요. 설정 화면에서 잔잔한 가계부를 켜 주세요.",
+      confirmLabel: "켜기",
+    }).then((ok) => {
+      if (ok) Capture.openAccessSettings();
+    });
+  }, []);
 
   const edit = useCallback(
     (id: string, patch: Partial<NoticeDraft>) =>
@@ -260,8 +350,25 @@ export function InboxProvider({ children }: { children: ReactNode }) {
       setRules,
       filter,
       setFilter,
+      suggested,
+      suggestCategories,
     }),
-    [ready, items, rules, access, sync, edit, resetEdits, remove, retry, setRules, filter, setFilter],
+    [
+      ready,
+      items,
+      rules,
+      access,
+      sync,
+      edit,
+      resetEdits,
+      remove,
+      retry,
+      setRules,
+      filter,
+      setFilter,
+      suggested,
+      suggestCategories,
+    ],
   );
 
   return <InboxContext.Provider value={value}>{children}</InboxContext.Provider>;

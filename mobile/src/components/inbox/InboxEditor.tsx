@@ -128,7 +128,7 @@ export function InboxEditor({
           <DateField label="날짜" value={draft.date} onChange={(date) => onChange({ date })} />
 
           {draft.type === "transfer" ? (
-            <FieldRow>
+            <>
               <SelectField
                 label="보내는 통장"
                 value={draft.accountId}
@@ -141,7 +141,7 @@ export function InboxEditor({
                 options={accountOptions.filter((o) => o.value !== draft.accountId)}
                 onChange={(toAccountId) => onChange({ toAccountId })}
               />
-            </FieldRow>
+            </>
           ) : (
             <>
               <SelectField

@@ -97,7 +97,7 @@ function SourceMenu({
             카드·계좌별로 보기
           </Text>
           <Text variant="footnote" weight="400" color="text2">
-            (미연결)은 아직 가계부 통장과 연결하지 않은 카드·계좌예요.
+            (통장 없음)은 계좌 메모의 번호와 맞는 통장을 찾지 못한 카드·계좌예요.
           </Text>
         </View>
         <Wheel items={items} value={value} onChange={setPick} accessibilityLabel="출처" />

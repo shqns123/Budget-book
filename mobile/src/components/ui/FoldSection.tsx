@@ -25,9 +25,12 @@ export function FoldSection({
   padded,
   inset,
   smallTitle,
+  leading,
   children,
 }: {
   title: string;
+  /** Drawn before the title (a 분류 icon, say). */
+  leading?: ReactNode;
   /** A short line beside the title, e.g. "3개". */
   meta?: string;
   defaultOpen?: boolean;
@@ -73,6 +76,7 @@ export function FoldSection({
           <Animated.View style={{ transform: [{ rotate }] }}>
             <Icon name="chevronDown" size={20} color={c.text2} />
           </Animated.View>
+          {leading}
           <Text
             variant={smallTitle ? "subhead" : "headline"}
             weight={smallTitle ? "700" : undefined}

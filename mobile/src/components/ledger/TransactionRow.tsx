@@ -1,6 +1,8 @@
 import { shortDate } from "@/lib/dates";
 import { accountName, typeLabel, won, type Account, type Transaction } from "@/lib/ledger";
 import { Row, Tag } from "@/components/ui";
+import { CategoryTile, categoryIcon } from "@/components/ledger/CategoryIcon";
+import { useLedger } from "@/store/ledger-store";
 import type { PressableProps } from "react-native";
 
 export function amountText(item: Transaction) {
@@ -37,6 +39,12 @@ export function TransactionRow({
   linked?: Transaction;
 }) {
   const amount = amountText(item);
+  const { data } = useLedger();
+  // 지출 / 수입 show their 대분류's icon; an 이동 keeps the arrows.
+  const leading =
+    item.type === "transfer" ? undefined : (
+      <CategoryTile icon={categoryIcon(data.settings.categories, item.type, item.category)} />
+    );
   return (
     <Row
       dense
@@ -44,6 +52,7 @@ export function TransactionRow({
       onPress={onPress}
       accessibilityActions={accessibilityActions}
       onAccessibilityAction={onAccessibilityAction}
+      leading={leading}
       icon={item.type === "transfer" ? "transfer" : item.type === "income" ? "income" : "expense"}
       iconTone={item.type === "transfer" ? "neutral" : item.type === "income" ? "income" : "expense"}
       title={item.name}

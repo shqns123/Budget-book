@@ -28,7 +28,36 @@ export type LedgerCategory = {
   minorCategory: string;
   fixed: boolean;
   transactionType: "income" | "expense";
+  /** The row's stable id (분류 아이디), once the server has given it one. */
+  id?: string;
 };
+
+/**
+ * A 분류 remembered from before (대기함 memory, a model's suggestion) as it is now: by its id when
+ * the row still exists (renamed or not), else by its names if they are still a row's names. Gone
+ * or renamed without an id: undefined, so the caller fills the 분류 another way.
+ */
+export function currentCategory(
+  ref: { categoryId?: string; category: string; minorCategory: string },
+  type: "income" | "expense",
+  categories: LedgerCategory[],
+): { category: string; minorCategory: string; categoryId?: string } | undefined {
+  const byId = ref.categoryId ? categories.find((c) => c.id === ref.categoryId) : undefined;
+  const row =
+    byId ??
+    categories.find(
+      (c) =>
+        c.transactionType === type &&
+        c.majorCategory === ref.category &&
+        (!ref.minorCategory || c.minorCategory === ref.minorCategory),
+    );
+  if (!row) return undefined;
+  return {
+    category: row.majorCategory,
+    minorCategory: ref.minorCategory ? row.minorCategory : "",
+    ...(row.id ? { categoryId: row.id } : {}),
+  };
+}
 
 export type TransactionType = "income" | "expense" | "transfer";
 
@@ -39,6 +68,8 @@ export type Transaction = {
   name: string;
   category: string;
   minorCategory?: string;
+  /** The category row (CategorySetting.id): its current names replace category / minorCategory. */
+  categoryId?: string;
   amount: number;
   /** Stored as YYYY.MM.DD */
   date: string;
@@ -75,6 +106,8 @@ export type RecurringTemplate = {
   day: number;
   type?: TransactionType;
   toAccountId?: string;
+  /** The category row (CategorySetting.id) it belongs to. */
+  categoryId?: string;
 };
 
 export type MonthlyBudget = { accountId: string; amount: number };
@@ -99,6 +132,10 @@ export type CategorySetting = {
   minor: string;
   fixed: boolean;
   transactionType: "income" | "expense";
+  /** The 대분류's icon (components/ledger/CategoryIcon), kept on each of its rows. */
+  icon?: string;
+  /** Stable row id, given by the server: records link to it, so renaming keeps them. */
+  id?: string;
 };
 
 export type SharedSettings = {
@@ -200,6 +237,7 @@ type StoredCategory = {
   fixed?: boolean;
   isFixed?: boolean;
   transactionType?: "income" | "expense";
+  id?: string;
 };
 
 /** Normalize the stored settings into accounts and categories (web: hydrateLedgerSettings). */
@@ -237,6 +275,7 @@ export function normalizeSettings(value: unknown) {
       minorCategory: category.minorCategory ?? category.minor ?? "",
       fixed: category.fixed ?? category.isFixed ?? false,
       transactionType: category.transactionType ?? "expense",
+      ...(category.id ? { id: category.id } : {}),
     }),
   );
   return { accounts, categories };

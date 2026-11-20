@@ -1,5 +1,7 @@
 import { Pressable, StyleSheet, View } from "react-native";
+import { CategoryTile, categoryIcon } from "@/components/ledger/CategoryIcon";
 import { Icon, PrimaryButton, SecondaryButton, Tag, Text, TextButton } from "@/components/ui";
+import { useLedger } from "@/store/ledger-store";
 import { shortDate } from "@/lib/dates";
 import { accountName, typeLabel, won, type Account, type Transaction } from "@/lib/ledger";
 import type { InboxView } from "@/lib/notices/inbox";
@@ -47,6 +49,7 @@ export function InboxCard({
   actions: CardActions;
 }) {
   const { c } = useTheme();
+  const categories = useLedger().data.settings.categories;
   const { item, draft, classification } = view;
   const parsed = item.parsed;
   const tone = draft.type === "income" ? c.income : draft.type === "transfer" ? c.text2 : c.expense;
@@ -67,13 +70,17 @@ export function InboxCard({
         accessibilityLabel={`${draft.name}, ${typeLabel(draft.type)} ${won(draft.amount)}, ${when}. 눌러서 수정`}
         style={({ pressed }) => [styles.head, pressed && { opacity: 0.6 }]}
       >
-        <View style={[styles.tile, { backgroundColor: tile }]}>
-          <Icon
-            name={draft.type === "transfer" ? "transfer" : draft.type === "income" ? "income" : "expense"}
-            size={20}
-            color={tone}
-          />
-        </View>
+        {draft.type !== "transfer" && draft.category ? (
+          <CategoryTile icon={categoryIcon(categories, draft.type, draft.category)} />
+        ) : (
+          <View style={[styles.tile, { backgroundColor: tile }]}>
+            <Icon
+              name={draft.type === "transfer" ? "transfer" : draft.type === "income" ? "income" : "expense"}
+              size={20}
+              color={tone}
+            />
+          </View>
+        )}
         <View style={{ flex: 1, gap: 2 }}>
           <Text variant="body" weight="600" numberOfLines={1}>
             {draft.name || "내용 없음"}
@@ -100,11 +107,11 @@ export function InboxCard({
         {item.status === "unread" ? <Tag label="직접 입력" tone="warn" /> : null}
         {parsed && parsed.installment > 0 ? <Tag label={`할부 ${parsed.installment}개월`} /> : null}
         {parsed && parsed.currency !== "KRW" ? <Tag label={`외화 ${parsed.currency}`} tone="warn" /> : null}
-        {!view.linked && parsed ? <Tag label="통장 미연결" tone="warn" /> : null}
-        {view.linked && classification.accountGuessed && !item.edits.accountId ? (
-          <Tag label="통장 추정 · 등록하면 연결" />
+        {!view.linked && parsed ? <Tag label="통장 선택 필요" tone="warn" /> : null}
+        {view.linked && classification.accountGuessed && !item.edits.accountId ? <Tag label="메모 번호로 찾음" /> : null}
+        {classification.categoryFrom && draft.type !== "transfer" && !item.edits.category ? (
+          <Tag label={classification.categoryFrom === "history" ? "지난 기록 분류" : "추천 분류"} />
         ) : null}
-        {classification.toAccountGuessed && !item.edits.toAccountId ? <Tag label="받는 카드 추정" /> : null}
         {view.paired ? <Tag label={view.paired.parsed?.bill ? "카드사 알림과 묶음" : "입금 알림과 묶음"} /> : null}
       </View>
       <Text variant="footnote" weight="400" color="text2">

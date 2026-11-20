@@ -1,6 +1,13 @@
 import { useMemo, useState } from "react";
-import { StyleSheet, View } from "react-native";
+import { Pressable, StyleSheet, View } from "react-native";
 import { AccountOrderRows } from "@/components/ledger/AccountOrderRows";
+import {
+  CATEGORY_ICON_KEYS,
+  CATEGORY_ICONS,
+  CategoryTile,
+  categoryIcon,
+  type CategoryIconKey,
+} from "@/components/ledger/CategoryIcon";
 import { accountIcon } from "@/components/ledger/ScopeControls";
 import {
   Banner,
@@ -131,6 +138,31 @@ function AccountsView({
     paymentDay: "",
   };
   const [draft, setDraft] = useState(blank);
+  // 계좌 수정: name, 메모 (card / account numbers for 결제 알림 matching) and 결제일. The id stays,
+  // so its transactions and notice links are untouched.
+  const [editing, setEditing] = useState<{ id: string; name: string; memo: string; paymentDay: string } | null>(
+    null,
+  );
+  const openEdit = (account: AccountSetting) =>
+    setEditing({
+      id: account.id,
+      name: account.name,
+      memo: account.memo ?? "",
+      paymentDay: account.paymentDay ? String(account.paymentDay) : "",
+    });
+  const saveEdit = () => {
+    if (!editing?.name.trim()) return;
+    const { id, name, memo, paymentDay } = editing;
+    update((s) => ({
+      ...s,
+      accounts: s.accounts.map((a) =>
+        a.id === id
+          ? { ...a, name: name.trim(), memo: memo.trim(), paymentDay: paymentDay ? Number(paymentDay) : undefined }
+          : a,
+      ),
+    }));
+    setEditing(null);
+  };
 
   const addAccount = () => {
     if (!draft.name.trim()) return;
@@ -202,8 +234,9 @@ function AccountsView({
                 first={index === 0}
                 icon={accountIcon[account.kind] ?? "bank"}
                 title={account.name}
-                meta={`${majorLabel(account.major)} · ${account.minor}${account.paymentDay ? ` · ${account.paymentDay}일 결제/상환` : ""}`}
+                meta={`${majorLabel(account.major)} · ${account.minor}${account.paymentDay ? ` · ${account.paymentDay}일 결제/상환` : ""}${account.memo ? ` · ${account.memo}` : ""}`}
                 dimmed={account.hidden}
+                onPress={() => openEdit(account)}
                 trailing={
                   <View style={styles.accountTrailing}>
                     <Text variant="subhead" weight="600" tabular>
@@ -226,8 +259,43 @@ function AccountsView({
       <Text variant="footnote" weight="400" color="text2">
         {reordering
           ? "계좌를 길게 누른 뒤 원하는 위치로 끌어 놓으세요."
-          : "시작 잔액이 0원인 계좌만 숨길 수 있어요."}
+          : "계좌를 누르면 이름, 메모, 결제일을 고칠 수 있어요. 시작 잔액이 0원인 계좌만 숨길 수 있어요."}
       </Text>
+      <Sheet
+        visible={Boolean(editing)}
+        onClose={() => setEditing(null)}
+        title="계좌 수정"
+        footer={<PrimaryButton label="저장" disabled={!editing?.name.trim()} onPress={saveEdit} />}
+      >
+        {editing ? (
+          <>
+            <TextField
+              label="계좌 이름"
+              value={editing.name}
+              onChangeText={(name) => setEditing({ ...editing, name })}
+            />
+            <TextField
+              label="메모 (선택)"
+              value={editing.memo}
+              onChangeText={(memo) => setEditing({ ...editing, memo })}
+              placeholder="예: 9003-3071-1234-6 또는 카드 끝 4자리"
+              autoCorrect={false}
+            />
+            <Text variant="footnote" weight="400" color="text2">
+              결제 알림을 이 계좌로 맞추는 데 쓰여요. 카드와 카카오뱅크는 끝 4자리, 다른 은행은 계좌번호 전체를 적어
+              주세요.
+            </Text>
+            <TextField
+              label="결제일 / 상환일 (선택)"
+              keyboardType="number-pad"
+              value={editing.paymentDay}
+              onChangeText={(text) => setEditing({ ...editing, paymentDay: text.replace(/[^0-9]/g, "") })}
+              placeholder="예: 25"
+              suffix="일"
+            />
+          </>
+        ) : null}
+      </Sheet>
       <Sheet
         visible={showAdd}
         onClose={() => setShowAdd(false)}
@@ -292,7 +360,7 @@ function CategoriesView({ settings, update }: { settings: SharedSettings; update
   const updateGroup = (
     type: CategorySetting["transactionType"],
     major: string,
-    patch: Pick<CategorySetting, "major">,
+    patch: Partial<Pick<CategorySetting, "major" | "icon">>,
     typing?: boolean,
   ) =>
     update(
@@ -378,6 +446,7 @@ function CategoriesView({ settings, update }: { settings: SharedSettings; update
           key={group.rows[0].index}
           title={group.major}
           meta={`${group.rows.length}개`}
+          leading={<CategoryTile icon={categoryIcon(settings.categories, group.transactionType, group.major)} size={32} />}
           padded
         >
           <View style={{ gap: space.md }}>
@@ -385,6 +454,10 @@ function CategoriesView({ settings, update }: { settings: SharedSettings; update
               label="대분류"
               value={group.major}
               onChangeText={(major) => updateGroup(group.transactionType, group.major, { major }, true)}
+            />
+            <IconPicker
+              value={categoryIcon(settings.categories, group.transactionType, group.major)}
+              onChange={(icon) => updateGroup(group.transactionType, group.major, { icon })}
             />
             <SelectField
               label="대분류 거래 유형"
@@ -472,6 +545,39 @@ function CategoriesView({ settings, update }: { settings: SharedSettings; update
         )}
       </Sheet>
     </>
+  );
+}
+
+/** The 대분류's icon: every drawing on its tile, the current one ringed. */
+function IconPicker({ value, onChange }: { value: CategoryIconKey; onChange: (icon: CategoryIconKey) => void }) {
+  const { c } = useTheme();
+  return (
+    <View style={{ gap: space.sm }}>
+      <Text variant="footnote" color="text2">
+        아이콘
+      </Text>
+      <View style={styles.iconGrid}>
+        {CATEGORY_ICON_KEYS.map((key) => {
+          const selected = key === value;
+          return (
+            <Pressable
+              key={key}
+              onPress={() => onChange(key)}
+              accessibilityRole="button"
+              accessibilityState={{ selected }}
+              accessibilityLabel={`${CATEGORY_ICONS[key].label} 아이콘`}
+              style={({ pressed }) => [
+                styles.iconChoice,
+                { borderColor: selected ? c.primary : "transparent" },
+                pressed && { opacity: 0.6 },
+              ]}
+            >
+              <CategoryTile icon={key} size={40} />
+            </Pressable>
+          );
+        })}
+      </View>
+    </View>
   );
 }
 
@@ -753,4 +859,6 @@ const styles = StyleSheet.create({
   accountActions: { flexDirection: "row", gap: space.sm },
   minor: { borderRadius: radius.control, padding: space.md, gap: space.xs },
   minorHead: { flexDirection: "row", alignItems: "center", gap: space.sm },
+  iconGrid: { flexDirection: "row", flexWrap: "wrap", gap: space.xs },
+  iconChoice: { borderWidth: 2, borderRadius: 16, padding: 2 },
 });

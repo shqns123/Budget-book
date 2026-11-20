@@ -89,6 +89,7 @@ export function Row({
   badge,
   dense,
   metaLines = 1,
+  leading,
 }: {
   title: string;
   meta?: string;
@@ -99,6 +100,8 @@ export function Row({
   /** Lines the meta may take (break them with "
 "). */
   metaLines?: number;
+  /** Drawn in place of the icon tile (a 분류 icon, say). */
+  leading?: ReactNode;
   icon?: IconName;
   iconTone?: "neutral" | "income" | "expense" | "accent" | "danger";
   trailing?: ReactNode | string;
@@ -123,11 +126,12 @@ export function Row({
   }[iconTone];
   const content = (
     <View style={[styles.row, dimmed && { opacity: 0.55 }]}>
-      {icon && (
+      {leading ??
+        (icon && (
         <View style={[styles.tile, { backgroundColor: tile[0] }]}>
           <Icon name={icon} size={20} color={tile[1]} />
         </View>
-      )}
+        ))}
       <View style={styles.rowText}>
         <Text
           variant="body"

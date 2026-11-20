@@ -33,11 +33,10 @@ const splitList = (text: string) =>
     .map((s) => s.trim())
     .filter(Boolean);
 
-const UNLINK = "__unlink";
-
 /**
- * 결제 알림 설정: 알림 접근, which apps are read, "내 이름" and 이체 words, and the cards /
- * accounts linked to ledger accounts. All of it stays on this phone.
+ * 결제 알림 설정: 알림 접근, which apps are read, "내 이름" and 이체 words, and the 월급통장. Cards
+ * and accounts are found by the numbers in the accounts' 메모 (가계부 설정 → 계좌). It stays on this
+ * phone, except the 월급통장, which is also the one 거래 입력 uses.
  */
 export function NoticeSettings({
   visible,
@@ -94,11 +93,7 @@ function SettingsBody({
       seen: seen.some((s) => s.packageName === p),
     }));
   });
-  const accountOptions = [
-    ...accounts.filter((a) => !a.hidden).map((a) => ({ value: a.id, label: a.name })),
-    { value: UNLINK, label: "연결 해제" },
-  ];
-  const linked = Object.entries(rules.sources);
+  const accountOptions = accounts.filter((a) => !a.hidden).map((a) => ({ value: a.id, label: a.name }));
   const remembered = Object.keys(rules.memory).length + Object.keys(rules.recurringAlias).length;
 
   const toggleApp = (packageName: string) => {
@@ -159,7 +154,7 @@ function SettingsBody({
       <SelectField
         label="월급통장"
         value={linkTransfer.to}
-        options={[{ value: "", label: "고르지 않음" }, ...accountOptions.filter((o) => o.value !== UNLINK)]}
+        options={[{ value: "", label: "고르지 않음" }, ...accountOptions]}
         onChange={(to) => setLinkTransfer({ ...linkTransfer, to })}
       />
       <Text variant="footnote" weight="400" color="text2">
@@ -184,43 +179,10 @@ function SettingsBody({
       ) : null}
 
       <Text variant="footnote" weight="400" color="text2">
-        새 카드·계좌는 카드사·은행 이름이 같은 통장으로 채워요. 카드 알림은 카드 통장끼리, 은행 알림은 은행
-        통장끼리만 비교하고, 후보가 딱 하나일 때만 채워요. 통장 메모에 번호를 적어 두면 정확히 맞춰요: 카드와
-        카카오뱅크는 끝 4자리(예: 2222), 다른 은행은 계좌번호 전체(예: 9003-3071-1234-6).
+        카드·계좌는 통장 메모에 적힌 번호로만 찾아요. 카드와 카카오뱅크는 끝 4자리(예: 2222), 다른 은행은
+        계좌번호 전체(예: 9003-3071-1234-6)를 가계부 설정 → 계좌에서 메모에 적어 두세요. 카드 알림은 카드
+        통장끼리, 은행 알림은 은행 통장끼리 비교하고, 맞는 통장이 하나일 때만 채워요.
       </Text>
-      <Text variant="footnote" weight="400" color="text2">
-        처음 등록할 때 연결이 확정돼요. 그 뒤에 한 거래만 다른 통장으로 등록해도 연결은 그대로고, 바꾸려면 아래
-        목록에서 바꿔요.
-      </Text>
-      <Section title="연결된 카드·계좌">
-        {linked.length ? (
-          <View style={{ gap: space.md, padding: space.lg }}>
-            {linked.map(([key, accountId]) => (
-              <SelectField
-                key={key}
-                label={key.replace("|", " ")}
-                value={accountId}
-                options={accountOptions}
-                onChange={(value) =>
-                  setRules((r) => {
-                    const sources = { ...r.sources };
-                    if (value === UNLINK) delete sources[key];
-                    else sources[key] = value;
-                    return { ...r, sources };
-                  })
-                }
-              />
-            ))}
-          </View>
-        ) : (
-          <View style={{ padding: space.lg }}>
-            <Text variant="footnote" weight="400" color="text2">
-              아직 연결된 카드·계좌가 없어요.
-            </Text>
-          </View>
-        )}
-      </Section>
-
       {remembered ? (
         <View style={{ alignItems: "flex-start" }}>
           <TextButton

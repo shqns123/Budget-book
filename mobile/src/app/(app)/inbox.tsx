@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { View } from "react-native";
 import { InboxCard } from "@/components/inbox/InboxCard";
 import { InboxEditor } from "@/components/inbox/InboxEditor";
@@ -10,12 +10,10 @@ import {
   ChipRow,
   EmptyState,
   Screen,
-  Section,
-  SelectField,
   TextButton,
 } from "@/components/ui";
 import { confirm } from "@/lib/confirm";
-import { accountName, newId, won, type RecurringTemplate } from "@/lib/ledger";
+import { accountName, currentCategory, newId, won, type RecurringTemplate } from "@/lib/ledger";
 import {
   applyTemplate,
   draftProblem,
@@ -43,49 +41,56 @@ export default function InboxScreen() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const salaryAccountId = usePrefs().linkTransfer.to;
 
+  const { suggested, suggestCategories } = inbox;
   const views = useMemo(
     () =>
       buildViews(
         inbox.items,
-        { accounts, categories, recurring: data.recurring, transactions: data.transactions, rules, salaryAccountId },
+        {
+          accounts,
+          categories,
+          recurring: data.recurring,
+          transactions: data.transactions,
+          rules,
+          salaryAccountId,
+          suggested,
+        },
         (id) => accountName(accounts, id),
       ),
-    [inbox.items, accounts, categories, data.recurring, data.transactions, rules, salaryAccountId],
+    [inbox.items, accounts, categories, data.recurring, data.transactions, rules, salaryAccountId, suggested],
   );
+  // 지출 / 수입 still without a 분류 (no similar record either): ask the model for their names.
+  useEffect(() => {
+    const wanted = views
+      .filter((v) => v.item.parsed && v.draft.type !== "transfer" && !v.draft.category && v.draft.name.trim())
+      .map((v) => ({ name: v.draft.name, type: v.draft.type === "income" ? ("income" as const) : ("expense" as const) }));
+    if (wanted.length) suggestCategories(wanted);
+  }, [views, suggestCategories]);
   const sources = useMemo(() => sourceOptions(views), [views]);
   const activeFilter = sources.some((s) => s.key === filter) ? filter : "";
   const visible = activeFilter ? views.filter((v) => v.sourceKey === activeFilter) : views;
   const editing = views.find((v) => v.item.id === editingId) ?? null;
-  const unlinkedKey = activeFilter.startsWith("source:") ? activeFilter.slice("source:".length) : "";
 
   const removeView = (view: InboxView) => inbox.remove([view.item.id, ...(view.paired ? [view.paired.id] : [])]);
 
-  /** What registering this record teaches for the next notices of the same card and 상대방. */
+  /**
+   * What registering this record teaches for the next notices of the same 상대방. Cards and
+   * accounts aren't learned: they are found by the number in an account's 메모 every time.
+   */
   const learn = (view: InboxView, draft: NoticeDraft) => {
     const parsed = view.item.parsed;
-    if (!parsed) return;
+    if (!parsed || parsed.direction === "cancel") return;
     const key = counterpartyKey(parsed.counterparty);
-    const own = parsed.direction === "in" && draft.type === "transfer" ? draft.toAccountId : draft.accountId;
+    // The 분류's row id too, so a renamed 분류 is still filled in next time.
+    const row =
+      draft.type !== "transfer" && draft.category
+        ? currentCategory(draft, draft.type === "income" ? "income" : "expense", categories)
+        : undefined;
     setRules((r) => {
-      // A card / account is linked on its first 등록 and stays so: picking another 통장 for one
-      // record changes only that record. The link itself is changed in 결제 알림 설정.
-      const sources = { ...r.sources };
-      const link = (sourceKey: string, accountId: string) => {
-        const current = sources[sourceKey];
-        if (accountId && !(current && accounts.some((a) => a.id === current))) sources[sourceKey] = accountId;
-      };
-      link(parsed.source.key, own);
-      const paired = view.paired?.parsed;
-      // A merged 카드 대금 notice keeps its own link (the 월급통장 it is paid from when alone).
-      if (paired && !paired.bill && draft.type === "transfer") link(paired.source.key, draft.toAccountId);
-      if (parsed.direction === "cancel") return { ...r, sources };
-      if (draft.recurringId) {
-        return { ...r, sources, recurringAlias: { ...r.recurringAlias, [key]: draft.recurringId } };
-      }
+      if (draft.recurringId) return { ...r, recurringAlias: { ...r.recurringAlias, [key]: draft.recurringId } };
       const { [key]: _alias, ...recurringAlias } = r.recurringAlias;
       return {
         ...r,
-        sources,
         recurringAlias,
         memory: {
           ...r.memory,
@@ -94,6 +99,7 @@ export default function InboxScreen() {
             name: draft.name.trim(),
             category: draft.category,
             minorCategory: draft.minorCategory,
+            ...(row?.categoryId ? { categoryId: row.categoryId } : {}),
             toAccountId: draft.type === "transfer" ? draft.toAccountId : "",
           },
         },
@@ -191,12 +197,6 @@ export default function InboxScreen() {
     }
   };
 
-  const linkSource = (accountId: string) => {
-    if (!unlinkedKey) return;
-    setRules((r) => ({ ...r, sources: { ...r.sources, [unlinkedKey]: accountId } }));
-    setFilter(`account:${accountId}`);
-  };
-
   return (
     <Screen
       back
@@ -217,20 +217,6 @@ export default function InboxScreen() {
           message="알림 접근이 꺼져 있어서 결제 알림을 받을 수 없어요."
           action={<TextButton label="켜기" onPress={() => setSettingsOpen(true)} />}
         />
-      ) : null}
-
-      {unlinkedKey ? (
-        <Section title="이 카드·계좌를 가계부 통장과 연결">
-          <View style={{ padding: space.lg }}>
-            <SelectField
-              accessibilityLabel="연결할 통장"
-              value=""
-              placeholder="통장 고르기"
-              options={accounts.filter((a) => !a.hidden).map((a) => ({ value: a.id, label: a.name }))}
-              onChange={linkSource}
-            />
-          </View>
-        </Section>
       ) : null}
 
       {visible.length ? (

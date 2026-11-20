@@ -10,6 +10,7 @@ import {
 } from "react";
 import { AppState } from "react-native";
 import { readState, writeState } from "@/lib/api";
+import { followCategoryNames } from "@/lib/category-links";
 import {
   emptySettings,
   migrateSettings,
@@ -103,7 +104,13 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
   const timers = useRef(new Map<LedgerKey, ReturnType<typeof setTimeout>>());
   const pending = useRef(new Map<LedgerKey, unknown>());
 
-  const commit = useCallback((next: LedgerData) => {
+  const commit = useCallback((raw: LedgerData) => {
+    // Records show their category row's current names (분류 아이디), so a rename shows at once.
+    const categories = raw.settings?.categories ?? [];
+    const transactions = followCategoryNames(raw.transactions ?? [], categories);
+    const recurring = followCategoryNames(raw.recurring ?? [], categories);
+    const next =
+      transactions === raw.transactions && recurring === raw.recurring ? raw : { ...raw, transactions, recurring };
     dataRef.current = next;
     setData(next);
   }, []);

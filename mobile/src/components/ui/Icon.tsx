@@ -51,6 +51,7 @@ const ios = {
   mail: "mail-outline",
   inbox: "file-tray-outline",
   link: "link-outline",
+  info: "information-circle-outline",
 } as const;
 
 export type IconName = keyof typeof ios;
@@ -99,6 +100,7 @@ const android: Record<IconName, keyof typeof MaterialIcons.glyphMap> = {
   mail: "mail-outline",
   inbox: "inbox",
   link: "link",
+  info: "info-outline",
 };
 
 export function Icon({
